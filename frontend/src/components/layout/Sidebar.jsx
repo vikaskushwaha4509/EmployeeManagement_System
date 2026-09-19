@@ -1,31 +1,26 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { useAuth } from '../../context/AuthContext';
 import {
-  LayoutDashboard,
-  Users,
+  Home,
+  User,
   Building2,
   CalendarCheck,
-  CalendarOff,
-  Receipt,
+  FileText,
+  BadgeDollarSign,
   X,
-  LogOut,
-  User,
-  ShieldCheck,
+  Users,
 } from 'lucide-react';
 
 const navigationItems = [
-  { name: 'Dashboard', to: '/dashboard', icon: LayoutDashboard },
-  { name: 'Employees', to: '/employees', icon: Users },
+  { name: 'Dashboard', to: '/dashboard', icon: Home },
+  { name: 'Employees', to: '/employees', icon: User },
   { name: 'Departments', to: '/departments', icon: Building2 },
   { name: 'Attendance', to: '/attendance', icon: CalendarCheck },
-  { name: 'Leaves', to: '/leaves', icon: CalendarOff },
-  { name: 'Payroll', to: '/payroll', icon: Receipt },
+  { name: 'Leaves', to: '/leaves', icon: FileText },
+  { name: 'Payroll', to: '/payroll', icon: BadgeDollarSign },
 ];
 
 export const Sidebar = ({ isOpen, onClose }) => {
-  const { user, isAdmin, logout } = useAuth();
-
   return (
     <>
       {/* Mobile Backdrop */}
@@ -38,23 +33,28 @@ export const Sidebar = ({ isOpen, onClose }) => {
 
       {/* Sidebar container */}
       <aside
-        className={`fixed top-0 bottom-0 left-0 z-40 flex flex-col w-64 bg-[#232f3e] text-slate-200 border-r border-slate-800 transition-transform duration-200 ease-in-out lg:translate-x-0 select-none ${
+        className={`fixed top-0 bottom-0 left-0 z-40 flex flex-col w-64 bg-[#1e293b] text-slate-200 transition-transform duration-200 ease-in-out lg:translate-x-0 select-none shadow-xl ${
           isOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
-        {/* Amazon Header */}
-        <div className="flex items-center justify-between h-16 px-6 bg-[#131921] border-b border-slate-800">
-          <div className="flex items-center gap-2">
-            <span className="text-xl font-bold tracking-tight text-white lowercase">
-              amazon
-            </span>
-            <span className="text-xs font-semibold px-2 py-0.5 rounded bg-amber-500 text-slate-900 ml-1">
-              EMS
-            </span>
+        {/* Brand Header */}
+        <div className="flex items-center justify-between px-6 py-6 border-b border-slate-800/60">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-slate-800/80 flex items-center justify-center text-white shrink-0">
+              <Users className="w-6 h-6 text-white" />
+            </div>
+            <div className="leading-tight">
+              <div className="text-sm font-bold text-white tracking-wide">
+                Employee
+              </div>
+              <div className="text-xs font-semibold text-slate-300">
+                Management System
+              </div>
+            </div>
           </div>
           <button
             onClick={onClose}
-            className="lg:hidden p-1.5 rounded text-slate-400 hover:text-white hover:bg-slate-800"
+            className="lg:hidden p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
             aria-label="Close sidebar"
           >
             <X className="w-5 h-5" />
@@ -62,10 +62,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
         </div>
 
         {/* Navigation Menu */}
-        <div className="flex-1 py-4 overflow-y-auto space-y-1">
-          <div className="px-5 py-2 text-[11px] font-bold uppercase tracking-wider text-slate-400">
-            Navigation
-          </div>
+        <div className="flex-1 py-6 px-3 overflow-y-auto space-y-1.5">
           {navigationItems.map((item) => {
             const Icon = item.icon;
             return (
@@ -78,45 +75,34 @@ export const Sidebar = ({ isOpen, onClose }) => {
                   }
                 }}
                 className={({ isActive }) =>
-                  `flex items-center gap-3 px-5 py-2.5 text-sm font-medium transition-colors ${
+                  `flex items-center gap-3.5 px-4 py-3 text-sm font-medium rounded-xl transition-all duration-150 ${
                     isActive
-                      ? 'bg-[#131921] text-amber-400 font-semibold border-l-4 border-amber-400'
-                      : 'text-slate-300 hover:bg-slate-800 hover:text-white border-l-4 border-transparent'
+                      ? 'bg-[#2563eb] text-white shadow-md font-semibold'
+                      : 'text-slate-300 hover:bg-slate-800/70 hover:text-white'
                   }`
                 }
               >
-                <Icon className="w-4 h-4 shrink-0" />
+                <Icon className="w-5 h-5 shrink-0" />
                 <span>{item.name}</span>
               </NavLink>
             );
           })}
         </div>
 
-        {/* User Session Footer */}
-        <div className="p-4 bg-[#1a222d] border-t border-slate-800">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2.5 min-w-0">
-              <div className="w-8 h-8 rounded-full bg-slate-700 text-white flex items-center justify-center font-bold text-xs shrink-0">
-                {isAdmin ? <ShieldCheck className="w-4 h-4 text-amber-400" /> : <User className="w-4 h-4 text-slate-300" />}
+        {/* User Profile */}
+        <div className="p-4 mx-3 mb-4 rounded-xl bg-slate-800/60 border border-slate-700/50">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-full bg-blue-600/20 text-blue-400 flex items-center justify-center font-semibold text-xs shrink-0 border border-blue-500/30">
+              <User className="w-4 h-4 text-blue-300" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="text-xs font-semibold text-white truncate">
+                Admin User
               </div>
-              <div className="min-w-0">
-                <div className="text-xs font-semibold text-white truncate">
-                  {user?.fullName || user?.username || 'Amazon User'}
-                </div>
-                <div className="text-[11px] text-amber-400 font-medium">
-                  {isAdmin ? 'Administrator' : 'Staff Member'}
-                </div>
+              <div className="text-[11px] text-slate-400 truncate">
+                admin@ems.com
               </div>
             </div>
-
-            <button
-              onClick={logout}
-              title="Sign Out"
-              className="p-1.5 rounded text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition-colors"
-              aria-label="Sign out"
-            >
-              <LogOut className="w-4 h-4" />
-            </button>
           </div>
         </div>
       </aside>
@@ -125,3 +111,4 @@ export const Sidebar = ({ isOpen, onClose }) => {
 };
 
 export default Sidebar;
+

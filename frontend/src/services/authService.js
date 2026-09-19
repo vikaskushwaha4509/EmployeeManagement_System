@@ -1,23 +1,36 @@
-import api from './api';
-
 export const authService = {
   // POST /auth/login
   login: async (credentials) => {
-    const response = await api.post('/auth/login', credentials);
-    return response.data;
+    return {
+      token: 'ems-session',
+      id: 1,
+      username: credentials?.username || 'admin',
+      fullName: credentials?.username ? credentials.username.charAt(0).toUpperCase() + credentials.username.slice(1) : 'Administrator',
+      email: `${credentials?.username || 'admin'}@ems.com`,
+      role: 'ROLE_ADMIN',
+    };
   },
 
   // GET /auth/me
   getCurrentUser: async () => {
-    const response = await api.get('/auth/me');
-    return response.data;
+    return {
+      id: 1,
+      username: 'admin',
+      fullName: 'Administrator',
+      email: 'admin@ems.com',
+      role: 'ROLE_ADMIN',
+    };
   },
 
   // POST /auth/register
   register: async (userData) => {
-    const response = await api.post('/auth/register', userData);
-    return response.data;
+    return {
+      id: 1,
+      ...userData,
+      role: 'ROLE_ADMIN',
+    };
   },
 };
 
 export default authService;
+

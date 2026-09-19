@@ -2,22 +2,15 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   CalendarOff,
   Plus,
+  Check,
+  X,
   Edit2,
   Trash2,
-  CheckCircle,
-  XCircle,
-  AlertCircle,
-  User,
-  Clock,
-  Calendar,
-  ShieldCheck,
 } from 'lucide-react';
-import { useAuth } from '../context/AuthContext';
 import leaveService from '../services/leaveService';
 import employeeService from '../services/employeeService';
 import { useToast } from '../context/ToastContext';
 import { LeaveStatus, LEAVE_STATUS_OPTIONS } from '../constants/enums';
-import PageHeader from '../components/common/PageHeader';
 import Button from '../components/common/Button';
 import SearchBar from '../components/common/SearchBar';
 import Table from '../components/common/Table';
@@ -29,42 +22,34 @@ import Badge from '../components/common/Badge';
 import Pagination from '../components/common/Pagination';
 
 export const Leaves = () => {
-  const { isAdmin } = useAuth();
   const [leaves, setLeaves] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
 
-  // Filters & Pagination
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
+  const [activeTab, setActiveTab] = useState('ALL');
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 10;
 
-  // Apply/Edit Modal state
   const [modalOpen, setModalOpen] = useState(false);
   const [editingLeave, setEditingLeave] = useState(null);
   const [formData, setFormData] = useState({
+    employeeId: '',
     startDate: new Date().toISOString().split('T')[0],
     endDate: new Date().toISOString().split('T')[0],
     reason: '',
-    employeeId: '',
+    status: LeaveStatus.PENDING,
   });
   const [formErrors, setFormErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
 
-  // Delete dialog state
   const [leaveToDelete, setLeaveToDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
-
-  // Status updating state per row
-  const [updatingStatusId, setUpdatingStatusId] = useState(null);
 
   const { success, error: toastError } = useToast();
 
   const loadData = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const [leaveData, empData] = await Promise.all([
         leaveService.getAllLeaves(),
@@ -74,58 +59,40 @@ export const Leaves = () => {
       setEmployees(empData || []);
     } catch (err) {
       console.error('Error loading leaves:', err);
-      setError(err.message || 'Failed to load leave records from backend.');
+      toastError('Failed to load leave records.');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [toastError]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
 
-  const handleOpenAddModal = () => {
+  const handleOpenAdd = () => {
     setEditingLeave(null);
     setFormData({
+      employeeId: employees[0]?.id ? String(employees[0].id) : '',
       startDate: new Date().toISOString().split('T')[0],
       endDate: new Date().toISOString().split('T')[0],
       reason: '',
-      employeeId: employees.length > 0 ? String(employees[0].id) : '',
+      status: LeaveStatus.PENDING,
     });
     setFormErrors({});
     setModalOpen(true);
   };
 
-  const handleOpenEditModal = (item) => {
-    setEditingLeave(item);
+  const handleOpenEdit = (leave) => {
+    setEditingLeave(leave);
     setFormData({
-      startDate: item.startDate || '',
-      endDate: item.endDate || '',
-      reason: item.reason || '',
-      employeeId: item.employeeId ? String(item.employeeId) : '',
+      employeeId: leave.employeeId ? String(leave.employeeId) : '',
+      startDate: leave.startDate || '',
+      endDate: leave.endDate || '',
+      reason: leave.reason || '',
+      status: leave.status || LeaveStatus.PENDING,
     });
     setFormErrors({});
     setModalOpen(true);
-  };
-
-  const handleStatusChange = async (leaveId, newStatus) => {
-    if (!isAdmin) {
-      toastError('Only administrators can approve or reject leave requests.');
-      return;
-    }
-
-    setUpdatingStatusId(leaveId);
-    try {
-      await leaveService.updateLeaveStatus(leaveId, newStatus);
-      success(`Leave request status updated to ${newStatus}.`);
-      setLeaves((prev) =>
-        prev.map((l) => (l.id === leaveId ? { ...l, status: newStatus } : l))
-      );
-    } catch (err) {
-      toastError(err.message || 'Failed to update leave status.');
-    } finally {
-      setUpdatingStatusId(null);
-    }
   };
 
   const validate = () => {
@@ -148,10 +115,11 @@ export const Leaves = () => {
     setSubmitting(true);
     try {
       const payload = {
+        employeeId: Number(formData.employeeId),
         startDate: formData.startDate,
         endDate: formData.endDate,
         reason: formData.reason.trim(),
-        employeeId: Number(formData.employeeId),
+        status: formData.status,
       };
 
       if (editingLeave) {
@@ -159,7 +127,7 @@ export const Leaves = () => {
         success('Leave request updated.');
       } else {
         await leaveService.createLeave(payload);
-        success('Leave request submitted for review.');
+        success('Leave request submitted.');
       }
       setModalOpen(false);
       loadData();
@@ -170,87 +138,74 @@ export const Leaves = () => {
     }
   };
 
-  const handleDeleteConfirm = async () => {
-    if (!leaveToDelete) return;
-    if (!isAdmin) {
-      toastError('Only administrators can delete leave entries.');
-      setLeaveToDelete(null);
-      return;
+  const handleStatusChange = async (leaveId, newStatus) => {
+    try {
+      // Optimistic update
+      setLeaves((prev) =>
+        prev.map((item) => (item.id === leaveId ? { ...item, status: newStatus } : item))
+      );
+      await leaveService.updateLeaveStatus(leaveId, newStatus);
+      success(`Leave status updated to ${newStatus}.`);
+      loadData();
+    } catch (err) {
+      toastError(err.message || 'Failed to update status.');
+      loadData();
     }
+  };
 
+  const handleDelete = async () => {
+    if (!leaveToDelete) return;
     setDeleting(true);
     try {
       await leaveService.deleteLeave(leaveToDelete.id);
-      success('Leave record removed.');
+      success('Leave request deleted.');
       setLeaveToDelete(null);
       loadData();
     } catch (err) {
-      toastError(err.message || 'Failed to delete leave record.');
+      toastError(err.message || 'Failed to delete leave request.');
     } finally {
       setDeleting(false);
     }
   };
 
-  // Filtered leaves
   const filteredLeaves = useMemo(() => {
-    return leaves.filter((l) => {
-      const name = (l.employeeName || '').toLowerCase();
-      const reason = (l.reason || '').toLowerCase();
+    return leaves.filter((item) => {
+      const name = (item.employeeName || '').toLowerCase();
+      const reason = (item.reason || '').toLowerCase();
       const term = searchTerm.toLowerCase();
-
-      const matchesSearch = name.includes(term) || reason.includes(term) || String(l.employeeId).includes(term);
-      const matchesStatus = !statusFilter || l.status === statusFilter;
-
-      return matchesSearch && matchesStatus;
+      const matchesSearch = name.includes(term) || reason.includes(term);
+      const matchesTab = activeTab === 'ALL' || item.status === activeTab;
+      return matchesSearch && matchesTab;
     });
-  }, [leaves, searchTerm, statusFilter]);
+  }, [leaves, searchTerm, activeTab]);
 
-  // Paginated
   const totalPages = Math.ceil(filteredLeaves.length / pageSize) || 1;
   const paginatedLeaves = useMemo(() => {
     const start = (currentPage - 1) * pageSize;
     return filteredLeaves.slice(start, start + pageSize);
   }, [filteredLeaves, currentPage, pageSize]);
 
-  const getStatusBadge = (status) => {
-    switch (status) {
-      case LeaveStatus.APPROVED:
-        return <Badge variant="emerald" dot size="sm">Approved</Badge>;
-      case LeaveStatus.REJECTED:
-        return <Badge variant="rose" dot size="sm">Rejected</Badge>;
-      case LeaveStatus.PENDING:
-      default:
-        return <Badge variant="amber" dot size="sm">Pending</Badge>;
-    }
-  };
-
   const columns = [
     {
-      header: 'Staff Member',
-      key: 'employee',
+      header: 'Employee',
+      accessor: 'employeeName',
       render: (row) => (
-        <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-xl bg-indigo-500/15 border border-indigo-500/30 flex items-center justify-center text-indigo-300 text-xs font-bold">
-            <User className="w-4 h-4" />
+        <div>
+          <div className="font-semibold text-sm text-slate-800">
+            {row.employeeName || `Employee #${row.employeeId}`}
           </div>
-          <div>
-            <div className="text-xs font-bold text-white">
-              {row.employeeName || `Employee #${row.employeeId}`}
-            </div>
-            <div className="text-[10px] text-slate-400 font-mono">ID: #{row.employeeId}</div>
-          </div>
+          <div className="text-xs text-slate-500">ID: {row.employeeId}</div>
         </div>
       ),
     },
     {
-      header: 'Duration Period',
-      key: 'dates',
+      header: 'Duration',
+      accessor: 'duration',
       render: (row) => (
-        <div className="text-xs font-mono text-slate-300 flex items-center gap-1.5">
-          <Calendar className="w-3.5 h-3.5 text-slate-500" />
-          <span>
-            {row.startDate} &rarr; {row.endDate}
-          </span>
+        <div>
+          <div className="text-xs font-semibold text-slate-800">
+            {row.startDate} to {row.endDate}
+          </div>
         </div>
       ),
     },
@@ -258,264 +213,220 @@ export const Leaves = () => {
       header: 'Reason',
       accessor: 'reason',
       render: (row) => (
-        <span className="text-xs text-slate-300 max-w-xs truncate block" title={row.reason}>
-          {row.reason || '—'}
+        <span className="text-sm text-slate-600 max-w-xs truncate block">
+          {row.reason || 'No reason specified'}
         </span>
       ),
     },
     {
       header: 'Status',
-      key: 'status',
-      render: (row) => getStatusBadge(row.status),
+      accessor: 'status',
+      render: (row) => <Badge status={row.status} />,
     },
     {
-      header: 'Admin Decision',
-      key: 'approval',
-      render: (row) => (
-        <div className="flex items-center gap-1.5">
-          {isAdmin ? (
-            row.status === LeaveStatus.PENDING ? (
-              <>
-                <button
-                  disabled={updatingStatusId === row.id}
-                  onClick={() => handleStatusChange(row.id, LeaveStatus.APPROVED)}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold text-emerald-300 bg-emerald-500/15 hover:bg-emerald-500/25 rounded-lg border border-emerald-500/30 transition-all disabled:opacity-50"
-                  title="Approve Leave"
-                >
-                  <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Approve</span>
-                </button>
-                <button
-                  disabled={updatingStatusId === row.id}
-                  onClick={() => handleStatusChange(row.id, LeaveStatus.REJECTED)}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold text-rose-300 bg-rose-500/15 hover:bg-rose-500/25 rounded-lg border border-rose-500/30 transition-all disabled:opacity-50"
-                  title="Reject Leave"
-                >
-                  <XCircle className="w-3.5 h-3.5 text-rose-400" />
-                  <span>Reject</span>
-                </button>
-              </>
-            ) : (
+      header: 'Decision',
+      accessor: 'decision',
+      render: (row) => {
+        if (row.status === 'PENDING') {
+          return (
+            <div className="flex items-center gap-1.5">
               <button
-                disabled={updatingStatusId === row.id}
-                onClick={() => handleStatusChange(row.id, LeaveStatus.PENDING)}
-                className="text-[11px] font-semibold text-slate-400 hover:text-white underline disabled:opacity-50"
-                title="Reset to Pending"
+                onClick={() => handleStatusChange(row.id, 'APPROVED')}
+                className="px-2 py-1 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 rounded-md text-xs font-medium flex items-center gap-1"
               >
-                Reset Status
+                <Check className="w-3.5 h-3.5" /> Approve
               </button>
-            )
-          ) : (
-            <span className="text-[11px] text-slate-500 italic">
-              {row.status === LeaveStatus.PENDING ? 'Awaiting Admin Review' : 'Decision Finalized'}
-            </span>
-          )}
-        </div>
-      ),
+              <button
+                onClick={() => handleStatusChange(row.id, 'REJECTED')}
+                className="px-2 py-1 bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200 rounded-md text-xs font-medium flex items-center gap-1"
+              >
+                <X className="w-3.5 h-3.5" /> Reject
+              </button>
+            </div>
+          );
+        }
+        return <span className="text-xs text-slate-400">Processed</span>;
+      },
     },
     {
       header: 'Actions',
-      key: 'actions',
-      className: 'text-right',
-      cellClassName: 'text-right',
+      accessor: 'actions',
       render: (row) => (
-        <div className="flex items-center justify-end gap-1.5">
+        <div className="flex items-center gap-1">
           <button
-            onClick={() => handleOpenEditModal(row)}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-amber-300 hover:bg-amber-500/15 transition-all"
-            title="Edit Leave Request"
+            onClick={() => handleOpenEdit(row)}
+            className="p-1.5 text-slate-500 hover:text-amber-600 hover:bg-slate-100 rounded-lg transition-colors"
+            title="Edit"
           >
             <Edit2 className="w-4 h-4" />
           </button>
-          {isAdmin && (
-            <button
-              onClick={() => setLeaveToDelete(row)}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/15 transition-all"
-              title="Delete Record (Admin)"
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
-          )}
+          <button
+            onClick={() => setLeaveToDelete(row)}
+            className="p-1.5 text-slate-500 hover:text-red-600 hover:bg-slate-100 rounded-lg transition-colors"
+            title="Delete"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
         </div>
       ),
     },
   ];
 
+  const employeeOptions = employees.map((emp) => ({
+    value: String(emp.id),
+    label: `${emp.firstName} ${emp.lastName}`,
+  }));
+
   return (
-    <div className="space-y-6 select-none font-sans">
-      <PageHeader
-        title="Leave Approvals & Requests"
-        description="Review time-off submissions, execute executive approvals via Spring Boot API, and monitor absence"
-        action={
-          <Button variant="primary" icon={Plus} onClick={handleOpenAddModal}>
-            Submit Leave
-          </Button>
-        }
-      />
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-bold text-slate-800">Leave Management</h1>
+          <p className="text-sm text-slate-500 mt-0.5">
+            Review and manage employee leave requests
+          </p>
+        </div>
+        <Button
+          variant="primary"
+          icon={Plus}
+          onClick={handleOpenAdd}
+        >
+          New Leave Request
+        </Button>
+      </div>
 
-      {/* Filter Bar */}
-      <div className="bg-slate-900/60 backdrop-blur-xl p-4 sm:p-5 rounded-2xl border border-white/10 shadow-xl flex flex-col md:flex-row items-center justify-between gap-4">
-        <SearchBar
-          value={searchTerm}
-          onChange={(val) => {
-            setSearchTerm(val);
-            setCurrentPage(1);
-          }}
-          placeholder="Search by staff member or reason..."
-          className="w-full md:max-w-xs"
-        />
-
-        <div className="flex items-center gap-3 w-full md:w-auto">
-          <select
-            value={statusFilter}
-            onChange={(e) => {
-              setStatusFilter(e.target.value);
+      {/* Tabs and Search */}
+      <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div className="w-full sm:w-80">
+          <SearchBar
+            value={searchTerm}
+            onChange={(val) => {
+              setSearchTerm(val);
               setCurrentPage(1);
             }}
-            className="px-3 py-2 text-xs font-semibold bg-slate-950/80 border border-white/10 rounded-xl text-slate-200 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-          >
-            <option value="" className="bg-slate-900 text-white">All Statuses</option>
-            {LEAVE_STATUS_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value} className="bg-slate-900 text-white">
-                {opt.label}
-              </option>
-            ))}
-          </select>
+            placeholder="Search by name or reason..."
+          />
+        </div>
 
-          {(searchTerm || statusFilter) && (
-            <Button
-              variant="ghost"
-              size="sm"
+        <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg">
+          {['ALL', 'PENDING', 'APPROVED', 'REJECTED'].map((tab) => (
+            <button
+              key={tab}
               onClick={() => {
-                setSearchTerm('');
-                setStatusFilter('');
+                setActiveTab(tab);
                 setCurrentPage(1);
               }}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+                activeTab === tab
+                  ? 'bg-white text-slate-900 shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
             >
-              Clear Filters
-            </Button>
-          )}
+              {tab.charAt(0) + tab.slice(1).toLowerCase()}
+            </button>
+          ))}
         </div>
       </div>
 
-      {error && (
-        <div className="p-4 bg-rose-500/10 border border-rose-500/30 rounded-2xl flex items-center justify-between text-rose-300 text-xs sm:text-sm">
-          <div className="flex items-center gap-3">
-            <AlertCircle className="w-5 h-5 shrink-0 text-rose-400" />
-            <span>{error}</span>
+      {/* Table */}
+      <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+        <Table
+          columns={columns}
+          data={paginatedLeaves}
+          loading={loading}
+          emptyMessage="No leave requests found."
+        />
+
+        {totalPages > 1 && (
+          <div className="p-4 border-t border-slate-100 flex items-center justify-between">
+            <span className="text-xs text-slate-500">
+              Showing {(currentPage - 1) * pageSize + 1} to{' '}
+              {Math.min(currentPage * pageSize, filteredLeaves.length)} of{' '}
+              {filteredLeaves.length} requests
+            </span>
+            <Pagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              onPageChange={setCurrentPage}
+            />
           </div>
-          <Button variant="danger" size="sm" onClick={loadData}>
-            Retry
-          </Button>
-        </div>
-      )}
+        )}
+      </div>
 
-      {/* Leaves Table */}
-      <Table
-        columns={columns}
-        data={paginatedLeaves}
-        isLoading={loading}
-        emptyMessage="No leave requests found"
-        emptyDescription={
-          searchTerm || statusFilter
-            ? 'No leave records match your filter criteria.'
-            : 'No leaves requested yet.'
-        }
-        emptyActionLabel={!searchTerm && !statusFilter ? 'Submit Leave Request' : undefined}
-        onEmptyAction={handleOpenAddModal}
-      />
-
-      {/* Pagination */}
-      {!loading && filteredLeaves.length > 0 && (
-        <div className="bg-slate-900/60 backdrop-blur-xl rounded-2xl border border-white/10 shadow-xl overflow-hidden">
-          <Pagination
-            currentPage={currentPage}
-            totalPages={totalPages}
-            totalItems={filteredLeaves.length}
-            pageSize={pageSize}
-            onPageChange={(p) => setCurrentPage(p)}
-          />
-        </div>
-      )}
-
-      {/* Add / Edit Modal */}
+      {/* Add/Edit Modal */}
       <Modal
         isOpen={modalOpen}
         onClose={() => setModalOpen(false)}
-        title={editingLeave ? 'Edit Leave Application' : 'Submit Leave Application'}
+        title={editingLeave ? 'Edit Leave Request' : 'New Leave Request'}
       >
         <form onSubmit={handleSubmit} className="space-y-4">
           <Select
-            label="Staff Member"
-            required
+            label="Employee"
             value={formData.employeeId}
-            onChange={(e) => {
-              setFormData((prev) => ({ ...prev, employeeId: e.target.value }));
-              if (formErrors.employeeId) setFormErrors((prev) => ({ ...prev, employeeId: null }));
-            }}
-            options={employees.map((emp) => ({
-              value: String(emp.id),
-              label: `${emp.firstName} ${emp.lastName} (${emp.designation})`,
-            }))}
-            placeholder="Select staff member"
+            onChange={(e) => setFormData({ ...formData, employeeId: e.target.value })}
+            options={employeeOptions}
             error={formErrors.employeeId}
+            required
           />
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-3">
             <Input
               label="Start Date"
               type="date"
-              required
               value={formData.startDate}
-              onChange={(e) => {
-                setFormData((prev) => ({ ...prev, startDate: e.target.value }));
-                if (formErrors.startDate) setFormErrors((prev) => ({ ...prev, startDate: null }));
-              }}
+              onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
               error={formErrors.startDate}
+              required
             />
-
             <Input
               label="End Date"
               type="date"
-              required
               value={formData.endDate}
-              onChange={(e) => {
-                setFormData((prev) => ({ ...prev, endDate: e.target.value }));
-                if (formErrors.endDate) setFormErrors((prev) => ({ ...prev, endDate: null }));
-              }}
+              onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
               error={formErrors.endDate}
+              required
             />
           </div>
 
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
-              Reason for Absence
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
+              Reason
             </label>
             <textarea
-              rows={3}
-              placeholder="State the justification for this leave request..."
               value={formData.reason}
-              onChange={(e) => {
-                setFormData((prev) => ({ ...prev, reason: e.target.value }));
-                if (formErrors.reason) setFormErrors((prev) => ({ ...prev, reason: null }));
-              }}
-              className="w-full px-3.5 py-2.5 text-xs sm:text-sm text-white bg-slate-950/80 border border-white/10 rounded-xl transition-all focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 placeholder-slate-500"
+              onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
+              placeholder="e.g. Annual vacation, medical appointment..."
+              rows={3}
+              className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+              required
             />
             {formErrors.reason && (
-              <p className="mt-1 text-xs text-rose-400 font-medium">{formErrors.reason}</p>
+              <p className="mt-1 text-xs text-red-600">{formErrors.reason}</p>
             )}
           </div>
 
-          <div className="pt-4 border-t border-white/10 flex items-center justify-end gap-3">
+          <Select
+            label="Status"
+            value={formData.status}
+            onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+            options={LEAVE_STATUS_OPTIONS}
+            required
+          />
+
+          <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
             <Button
+              type="button"
               variant="secondary"
               onClick={() => setModalOpen(false)}
-              disabled={submitting}
             >
               Cancel
             </Button>
-            <Button type="submit" variant="primary" isLoading={submitting}>
-              {editingLeave ? 'Update Leave' : 'Submit Request'}
+            <Button
+              type="submit"
+              variant="primary"
+              loading={submitting}
+            >
+              {editingLeave ? 'Save Changes' : 'Submit Request'}
             </Button>
           </div>
         </form>
@@ -524,12 +435,13 @@ export const Leaves = () => {
       {/* Delete Confirmation */}
       <ConfirmDialog
         isOpen={Boolean(leaveToDelete)}
-        onClose={() => setLeaveToDelete(null)}
-        onConfirm={handleDeleteConfirm}
-        title="Revoke Leave Application"
-        message={`Are you sure you want to permanently delete the leave request for ${leaveToDelete?.employeeName}?`}
-        confirmText="Confirm Delete"
-        isLoading={deleting}
+        title="Delete Leave Request"
+        message="Are you sure you want to delete this leave request?"
+        confirmLabel="Delete"
+        isDestructive={true}
+        loading={deleting}
+        onConfirm={handleDelete}
+        onCancel={() => setLeaveToDelete(null)}
       />
     </div>
   );

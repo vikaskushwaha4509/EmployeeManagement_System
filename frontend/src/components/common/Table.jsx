@@ -6,13 +6,16 @@ export const Table = ({
   columns = [],
   data = [],
   isLoading = false,
+  loading = false,
   emptyMessage = 'No records found',
   emptyDescription = 'There is currently no data to display.',
   emptyActionLabel,
   onEmptyAction,
   className = '',
 }) => {
-  if (isLoading) {
+  const isTableLoading = isLoading || loading;
+
+  if (isTableLoading) {
     return (
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-10">
         <Loader message="Loading data..." />

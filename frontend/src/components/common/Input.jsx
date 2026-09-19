@@ -25,7 +25,7 @@ export const Input = forwardRef(({
         id={inputId}
         type={type}
         required={required}
-        className={`w-full px-3 py-2 text-sm text-slate-900 bg-white border rounded-lg transition-colors placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 disabled:bg-slate-50 disabled:text-slate-500 disabled:cursor-not-allowed ${
+        className={`w-full px-3 py-2 text-sm text-slate-900 bg-white border rounded-lg transition-colors placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 disabled:bg-slate-50 disabled:text-slate-500 disabled:cursor-not-allowed ${
           error ? 'border-rose-400 focus:border-rose-500 focus:ring-rose-500/20' : 'border-slate-300'
         } ${className}`}
         {...props}

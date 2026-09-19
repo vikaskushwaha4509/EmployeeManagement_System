@@ -115,7 +115,7 @@ export const AddEmployee = () => {
       <div className="mb-6">
         <Link
           to="/employees"
-          className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-400 hover:text-white transition-colors"
+          className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 transition-colors"
         >
           <ArrowLeft className="w-3.5 h-3.5" />
           <span>Back to Employee List</span>
@@ -213,7 +213,7 @@ export const AddEmployee = () => {
 
             {/* Salary */}
             <Input
-              label="Salary ($/year)"
+              label="Salary (₹/month)"
               type="number"
               step="0.01"
               required

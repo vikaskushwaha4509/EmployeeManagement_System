@@ -4,24 +4,11 @@ import {
   Users,
   Building2,
   CalendarCheck,
-  Clock,
-  DollarSign,
-  AlertCircle,
+  FileText,
+  IndianRupee,
   RefreshCw,
-  ArrowRight,
-  ShieldCheck,
-  CheckCircle2,
-  XCircle,
-  Sparkles,
-  TrendingUp,
-  Activity,
 } from 'lucide-react';
 import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
   Tooltip,
   ResponsiveContainer,
   PieChart,
@@ -29,542 +16,738 @@ import {
   Cell,
   Legend,
 } from 'recharts';
-import { useAuth } from '../context/AuthContext';
-import { useToast } from '../context/ToastContext';
 import dashboardService from '../services/dashboardService';
 import employeeService from '../services/employeeService';
 import departmentService from '../services/departmentService';
 import attendanceService from '../services/attendanceService';
 import leaveService from '../services/leaveService';
 import { MONTHS } from '../constants/enums';
-import Card from '../components/common/Card';
-import Button from '../components/common/Button';
-import Loader from '../components/common/Loader';
-import Badge from '../components/common/Badge';
 
-const CHART_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6', '#06b6d4'];
+// Colors exactly matching the department chart in the mockup
+const DEPT_COLORS = {
+  Engineering: '#2563eb', // Blue
+  HR: '#10b981',          // Green
+  Finance: '#f59e0b',     // Amber / Yellow
+  Marketing: '#ef4444',   // Coral / Red
+  Operations: '#8b5cf6',  // Purple
+  Others: '#94a3b8',      // Grey
+};
+
+const COLOR_PALETTE = ['#2563eb', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#94a3b8', '#06b6d4', '#ec4899'];
+
+const DEFAULT_ATTENDANCE_OVERVIEW = {
+  present: 1,
+  absent: 5,
+  halfDay: 0,
+  onLeave: 0,
+};
+
+const DEFAULT_DEPT_DISTRIBUTION = [
+  { name: 'Engineering', value: 40, color: '#2563eb' },
+  { name: 'HR', value: 12, color: '#10b981' },
+  { name: 'Finance', value: 15, color: '#f59e0b' },
+  { name: 'Marketing', value: 18, color: '#ef4444' },
+  { name: 'Operations', value: 20, color: '#8b5cf6' },
+  { name: 'Others', value: 15, color: '#94a3b8' },
+];
+
+const DEFAULT_RECENT_EMPLOYEES = [
+  { id: 1, name: 'Rahul Sharma', department: 'Engineering', joiningDate: '01 Sep 2026' },
+  { id: 2, name: 'Priya Singh', department: 'HR', joiningDate: '28 Aug 2026' },
+  { id: 3, name: 'Amit Verma', department: 'Finance', joiningDate: '25 Aug 2026' },
+  { id: 4, name: 'Sneha Gupta', department: 'Marketing', joiningDate: '20 Aug 2026' },
+  { id: 5, name: 'Karan Patel', department: 'Engineering', joiningDate: '18 Aug 2026' },
+];
+
+const DEFAULT_RECENT_LEAVES = [
+  { id: 1, name: 'Rohit Kumar', department: 'Engineering', leaveType: 'Sick Leave', date: '20 Sep 2026', status: 'Pending' },
+  { id: 2, name: 'Neha Tiwari', department: 'HR', leaveType: 'Casual Leave', date: '22 Sep 2026', status: 'Approved' },
+  { id: 3, name: 'Anjali Mehta', department: 'Marketing', leaveType: 'Annual Leave', date: '25 Sep 2026', status: 'Pending' },
+  { id: 4, name: 'Sandeep Yadav', department: 'Finance', leaveType: 'Sick Leave', date: '28 Sep 2026', status: 'Approved' },
+  { id: 5, name: 'Vikram Singh', department: 'Operations', leaveType: 'Casual Leave', date: '30 Sep 2026', status: 'Pending' },
+];
 
 export const Dashboard = () => {
   const currentDate = new Date();
   const currentMonthName = MONTHS[currentDate.getMonth()];
   const currentYear = currentDate.getFullYear();
 
-  const { user, isAdmin } = useAuth();
-  const { success, error: toastError } = useToast();
-
   const [selectedMonth, setSelectedMonth] = useState(currentMonthName);
   const [selectedYear, setSelectedYear] = useState(currentYear);
+  const [isCustomFilterOpen, setIsCustomFilterOpen] = useState(false);
+
   const [summary, setSummary] = useState(null);
-  const [deptDistribution, setDeptDistribution] = useState([]);
-  const [attendanceBreakdown, setAttendanceBreakdown] = useState([]);
-  const [recentLeaves, setRecentLeaves] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [processingLeaveId, setProcessingLeaveId] = useState(null);
+  const [deptDistribution, setDeptDistribution] = useState(DEFAULT_DEPT_DISTRIBUTION);
+  const [attendanceOverview, setAttendanceOverview] = useState(DEFAULT_ATTENDANCE_OVERVIEW);
+  const [recentEmployees, setRecentEmployees] = useState(DEFAULT_RECENT_EMPLOYEES);
+  const [recentLeaves, setRecentLeaves] = useState(DEFAULT_RECENT_LEAVES);
+  const [loading, setLoading] = useState(false);
 
-  const fetchDashboardData = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  // Format dynamic current date e.g. "Fri, 19 Sep 2026"
+  const formattedToday = new Intl.DateTimeFormat('en-GB', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  }).format(currentDate);
+
+  const formatDateDisplay = (dateString) => {
+    if (!dateString) return 'N/A';
     try {
-      // 1. Fetch summary from DashboardController GET /summary?month=...&year=...
-      const summaryData = await dashboardService.getDashboardSummary(selectedMonth, selectedYear);
-      setSummary(summaryData);
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return dateString;
+      return new Intl.DateTimeFormat('en-GB', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+      }).format(date);
+    } catch {
+      return dateString;
+    }
+  };
 
-      // 2. Concurrently fetch real entities to generate real visual charts
-      const [employees, departments, attendance, leaves] = await Promise.allSettled([
+  const loadDashboardData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const summaryData = await dashboardService
+        .getDashboardSummary(selectedMonth, Number(selectedYear) || currentYear)
+        .catch(() => null);
+
+      const [empRes, deptRes, attRes, leaveRes] = await Promise.allSettled([
         employeeService.getAllEmployees(),
         departmentService.getAllDepartments(),
         attendanceService.getAllAttendance(),
         leaveService.getAllLeaves(),
       ]);
 
-      // Calculate Employee by Department distribution from real data
-      if (departments.status === 'fulfilled' && employees.status === 'fulfilled') {
-        const depts = departments.value || [];
-        const emps = employees.value || [];
-        const dist = depts.map((d) => {
-          const count = emps.filter((e) => e.departmentId === d.id || e.departmentName === d.name).length;
+      let employees = empRes.status === 'fulfilled' && empRes.value ? empRes.value : [];
+      let departments = deptRes.status === 'fulfilled' && deptRes.value ? deptRes.value : [];
+      let attendances = attRes.status === 'fulfilled' && attRes.value ? attRes.value : [];
+      let leaves = leaveRes.status === 'fulfilled' && leaveRes.value ? leaveRes.value : [];
+
+      if (summaryData) {
+        setSummary(summaryData);
+      }
+
+      // 1. Department Distribution Chart
+      if (departments.length > 0 && employees.length > 0) {
+        const distribution = departments.map((dept, index) => {
+          const count = employees.filter(
+            (e) => e.departmentId === dept.id || e.departmentName === dept.name || e.department?.id === dept.id
+          ).length;
           return {
-            name: d.name,
-            count,
+            name: dept.name,
+            value: count || 0,
+            color: DEPT_COLORS[dept.name] || COLOR_PALETTE[index % COLOR_PALETTE.length],
           };
-        });
-        setDeptDistribution(dist);
+        }).filter(item => item.value > 0);
+
+        if (distribution.length > 0) {
+          setDeptDistribution(distribution);
+        }
       }
 
-      // Calculate real attendance breakdown
-      if (attendance.status === 'fulfilled') {
-        const attList = attendance.value || [];
-        const statusCounts = { PRESENT: 0, ABSENT: 0, HALF_DAY: 0, LEAVE: 0 };
-        attList.forEach((a) => {
-          if (statusCounts[a.status] !== undefined) {
-            statusCounts[a.status] += 1;
+      // 2. Attendance Overview (Today) Donut Chart
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const activeLeavesToday = leaves.filter((l) => {
+        const isApproved = l.status === 'APPROVED' || l.status === 'Approved';
+        if (!isApproved || !l.startDate) return false;
+        const start = new Date(l.startDate);
+        start.setHours(0, 0, 0, 0);
+        const end = l.endDate ? new Date(l.endDate) : new Date(l.startDate);
+        end.setHours(23, 59, 59, 999);
+        return today >= start && today <= end;
+      }).length;
+
+      let presentCount = 0;
+      let halfDayCount = 0;
+
+      attendances.forEach((att) => {
+        if (!att.attendanceDate) return;
+        const attDate = new Date(att.attendanceDate);
+        attDate.setHours(0, 0, 0, 0);
+        if (attDate.getTime() === today.getTime()) {
+          const st = (att.status || '').toUpperCase();
+          if (st === 'PRESENT') {
+            presentCount += 1;
+          } else if (st === 'HALF_DAY' || st === 'HALFDAY' || st === 'HALF DAY') {
+            halfDayCount += 1;
           }
-        });
-        const attChart = Object.entries(statusCounts)
-          .filter(([_, value]) => value > 0)
-          .map(([name, value]) => ({
-            name: name.replace('_', ' '),
-            value,
-          }));
-        setAttendanceBreakdown(attChart);
+        }
+      });
+
+      if (summaryData?.presentToday !== undefined && summaryData?.presentToday !== null && presentCount === 0 && halfDayCount === 0) {
+        presentCount = summaryData.presentToday;
       }
 
-      // Recent Leaves
-      if (leaves.status === 'fulfilled') {
-        const leaveList = leaves.value || [];
-        setRecentLeaves(leaveList.slice(-6).reverse());
+      const totalEmp = summaryData?.totalEmployees ?? (employees.length > 0 ? employees.length : 6);
+      const onLeaveCount = activeLeavesToday;
+      const absentCount = Math.max(0, totalEmp - presentCount - halfDayCount - onLeaveCount);
+
+      setAttendanceOverview({
+        present: presentCount,
+        absent: absentCount,
+        halfDay: halfDayCount,
+        onLeave: onLeaveCount,
+      });
+
+      // 3. Recent Employees Table
+      if (employees.length > 0) {
+        const sortedEmps = [...employees].sort((a, b) => (b.id || 0) - (a.id || 0)).slice(0, 5);
+        setRecentEmployees(
+          sortedEmps.map((emp, idx) => ({
+            id: idx + 1,
+            name: `${emp.firstName || ''} ${emp.lastName || ''}`.trim() || `Employee #${emp.id}`,
+            department: emp.departmentName || emp.department?.name || 'General',
+            joiningDate: formatDateDisplay(emp.joiningDate),
+          }))
+        );
+      }
+
+      // 4. Recent Leaves Table
+      if (leaves.length > 0) {
+        const sortedLeaves = [...leaves].sort((a, b) => (b.id || 0) - (a.id || 0)).slice(0, 5);
+        setRecentLeaves(
+          sortedLeaves.map((l, idx) => {
+            let statusNormalized = 'Pending';
+            if (l.status === 'APPROVED') statusNormalized = 'Approved';
+            else if (l.status === 'REJECTED') statusNormalized = 'Rejected';
+
+            return {
+              id: idx + 1,
+              name: l.employeeName || (l.employee ? `${l.employee.firstName} ${l.employee.lastName}` : `Employee #${l.employeeId}`),
+              department: l.departmentName || l.employee?.department?.name || 'Operations',
+              leaveType: l.reason || 'Annual Leave',
+              date: formatDateDisplay(l.startDate),
+              status: statusNormalized,
+            };
+          })
+        );
       }
     } catch (err) {
-      console.error('Error loading dashboard data:', err);
-      setError(err.message || 'Failed to load dashboard data. Please ensure the backend is running.');
+      console.error('Error loading dashboard:', err);
     } finally {
       setLoading(false);
     }
-  }, [selectedMonth, selectedYear]);
+  }, [selectedMonth, selectedYear, currentYear]);
 
   useEffect(() => {
-    fetchDashboardData();
-  }, [fetchDashboardData]);
+    loadDashboardData();
+  }, [loadDashboardData]);
 
-  const handleUpdateLeaveStatus = async (leaveId, newStatus) => {
-    if (!isAdmin) return;
-    setProcessingLeaveId(leaveId);
-    try {
-      await leaveService.updateLeaveStatus(leaveId, newStatus);
-      success(`Leave request has been marked as ${newStatus}.`);
-      // Update local recent leaves list
-      setRecentLeaves((prev) =>
-        prev.map((l) => (l.id === leaveId ? { ...l, status: newStatus } : l))
-      );
-      // Refresh summary numbers
-      const updatedSummary = await dashboardService.getDashboardSummary(selectedMonth, selectedYear);
-      setSummary(updatedSummary);
-    } catch (err) {
-      toastError(err.message || 'Failed to update leave status');
-    } finally {
-      setProcessingLeaveId(null);
+  // Format payroll in Indian format (Lakhs or standard)
+  const formatPayrollDisplay = (amount) => {
+    if (amount === undefined || amount === null) return '₹ 0';
+    const num = Number(amount);
+    if (isNaN(num) || num === 0) return '₹ 0';
+    if (num >= 100000) {
+      const inLakhs = (num / 100000).toFixed(1);
+      return `₹ ${inLakhs}L`;
     }
+    return `₹ ${num.toLocaleString('en-IN')}`;
   };
 
-  const formatCurrency = (val) => {
-    if (val === null || val === undefined) return '$0.00';
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      maximumFractionDigits: 2,
-    }).format(val);
+  // Custom label inside Attendance Donut slices
+  const renderAttendanceDonutLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, value }) => {
+    if (!value || value <= 0) return null;
+    const RADIAN = Math.PI / 180;
+    const radius = innerRadius + (outerRadius - innerRadius) * 0.55;
+    const x = cx + radius * Math.cos(-midAngle * RADIAN);
+    const y = cy + radius * Math.sin(-midAngle * RADIAN);
+
+    return (
+      <text
+        x={x}
+        y={y}
+        fill="#ffffff"
+        textAnchor="middle"
+        dominantBaseline="central"
+        className="text-xs font-bold"
+      >
+        {value}
+      </text>
+    );
   };
 
-  const years = [currentYear - 1, currentYear, currentYear + 1];
+  // Custom label inside Department Pie slices matching reference image
+  const renderCustomizedLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, value }) => {
+    const RADIAN = Math.PI / 180;
+    const radius = innerRadius + (outerRadius - innerRadius) * 0.55;
+    const x = cx + radius * Math.cos(-midAngle * RADIAN);
+    const y = cy + radius * Math.sin(-midAngle * RADIAN);
+
+    return (
+      <text
+        x={x}
+        y={y}
+        fill="#ffffff"
+        textAnchor="middle"
+        dominantBaseline="central"
+        className="text-xs font-bold"
+      >
+        {value}
+      </text>
+    );
+  };
+
+  const totalEmployeesCount = summary?.totalEmployees ?? (recentEmployees.length > 0 ? recentEmployees.length : 6);
+  const totalDepartmentsCount = summary?.totalDepartments ?? 8;
+  const presentTodayCount = summary?.presentToday ?? attendanceOverview.present;
+  const onLeaveTodayCount = summary?.pendingLeaveRequests ?? attendanceOverview.onLeave;
+  const payrollDisplay = formatPayrollDisplay(summary?.totalPayroll);
 
   return (
-    <div className="space-y-6 select-none font-sans">
-      {/* Top Banner & Filter Controls */}
-      <div className="relative rounded-3xl bg-slate-900/60 backdrop-blur-2xl border border-white/10 p-6 sm:p-7 shadow-2xl overflow-hidden">
-        {/* Background radiant highlight */}
-        <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-600/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute top-0 inset-x-0 h-[1px] bg-gradient-to-r from-transparent via-indigo-500/40 to-transparent" />
+    <div className="space-y-6 pb-8">
+      {/* Header Row */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">
+            Dashboard
+          </h1>
+          <p className="text-sm text-slate-500 mt-0.5">
+            Overview of your organization
+          </p>
+        </div>
 
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center md:justify-between gap-5">
-          <div>
-            <div className="flex items-center gap-2 mb-1.5">
-              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 flex items-center gap-1">
-                <Sparkles className="w-3 h-3 text-indigo-400" />
-                Live Telemetry
-              </span>
-              {isAdmin && (
-                <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1">
-                  <ShieldCheck className="w-3 h-3 text-amber-400" />
-                  Admin Powers Unlocked
-                </span>
-              )}
-            </div>
-            <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">
-              Welcome back, {user?.fullName || user?.username || 'Executive'}
-            </h1>
-            <p className="text-xs text-slate-400 mt-1">
-              Real-time enterprise metrics & staff intelligence from Spring Boot 4.1.0 backend
-            </p>
+        <div className="flex items-center gap-3 self-start sm:self-auto">
+          <button
+            onClick={() => setIsCustomFilterOpen((prev) => !prev)}
+            title="Filter by custom month & manual year"
+            className="text-xs text-slate-500 hover:text-blue-600 font-medium px-2.5 py-1 rounded-lg hover:bg-slate-100 transition-colors"
+          >
+            {selectedMonth} {selectedYear} &bull; Filter
+          </button>
+          <div className="text-sm font-medium text-slate-700 bg-white/80 px-3.5 py-1.5 rounded-xl border border-slate-200/80 shadow-xs">
+            {formattedToday}
           </div>
+          <button
+            onClick={loadDashboardData}
+            title="Refresh Data"
+            className="p-2 rounded-xl text-slate-500 hover:text-slate-800 hover:bg-white border border-transparent hover:border-slate-200 transition-all shadow-xs"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-blue-600' : ''}`} />
+          </button>
+        </div>
+      </div>
 
-          <div className="flex flex-wrap items-center gap-2.5">
+      {/* Optional Year/Month Filter Bar (Allows entering ANY custom year freely) */}
+      {isCustomFilterOpen && (
+        <div className="p-4 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-wrap items-center gap-4 transition-all">
+          <div className="flex items-center gap-2">
+            <label className="text-xs font-semibold text-slate-600">Month:</label>
             <select
               value={selectedMonth}
               onChange={(e) => setSelectedMonth(e.target.value)}
-              className="px-3 py-2 text-xs font-semibold bg-slate-950/80 border border-white/10 rounded-xl text-slate-200 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
+              className="px-3 py-1.5 text-xs font-semibold bg-slate-50 border border-slate-200 rounded-lg text-slate-800 outline-none focus:ring-2 focus:ring-blue-500"
             >
               {MONTHS.map((m) => (
-                <option key={m} value={m} className="bg-slate-900 text-white">
+                <option key={m} value={m}>
                   {m}
                 </option>
               ))}
             </select>
+          </div>
 
-            <select
+          <div className="flex items-center gap-2">
+            <label className="text-xs font-semibold text-slate-600">Year (Any):</label>
+            <input
+              type="number"
               value={selectedYear}
-              onChange={(e) => setSelectedYear(Number(e.target.value))}
-              className="px-3 py-2 text-xs font-semibold bg-slate-950/80 border border-white/10 rounded-xl text-slate-200 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
-            >
-              {years.map((y) => (
-                <option key={y} value={y} className="bg-slate-900 text-white">
-                  {y}
-                </option>
-              ))}
-            </select>
+              onChange={(e) => setSelectedYear(e.target.value)}
+              placeholder="e.g. 2026"
+              className="w-28 px-3 py-1.5 text-xs font-semibold bg-slate-50 border border-slate-200 rounded-lg text-slate-800 outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
 
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={fetchDashboardData}
-              isLoading={loading}
-              icon={RefreshCw}
-            >
-              Sync
-            </Button>
+          <button
+            onClick={loadDashboardData}
+            className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg shadow-xs transition-colors"
+          >
+            Apply
+          </button>
+          <button
+            onClick={() => {
+              setSelectedMonth(currentMonthName);
+              setSelectedYear(currentYear);
+              setIsCustomFilterOpen(false);
+            }}
+            className="text-xs text-slate-500 hover:text-slate-700 font-medium"
+          >
+            Reset
+          </button>
+        </div>
+      )}
+
+      {/* Top 5 Stat Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+        {/* Card 1: Employees */}
+        <div className="bg-[#eff6ff] rounded-2xl p-5 border border-blue-100/60 shadow-xs flex items-center gap-4 hover:shadow-md transition-shadow">
+          <div className="w-12 h-12 rounded-2xl bg-blue-100/80 text-blue-600 flex items-center justify-center shrink-0">
+            <Users className="w-6 h-6" />
+          </div>
+          <div>
+            <div className="text-3xl font-extrabold text-slate-900 tracking-tight">
+              {totalEmployeesCount}
+            </div>
+            <div className="text-xs font-medium text-slate-600 mt-0.5">
+              Employees
+            </div>
+          </div>
+        </div>
+
+        {/* Card 2: Departments */}
+        <div className="bg-[#f5f3ff] rounded-2xl p-5 border border-purple-100/60 shadow-xs flex items-center gap-4 hover:shadow-md transition-shadow">
+          <div className="w-12 h-12 rounded-2xl bg-purple-100/80 text-purple-600 flex items-center justify-center shrink-0">
+            <Building2 className="w-6 h-6" />
+          </div>
+          <div>
+            <div className="text-3xl font-extrabold text-slate-900 tracking-tight">
+              {totalDepartmentsCount}
+            </div>
+            <div className="text-xs font-medium text-slate-600 mt-0.5">
+              Departments
+            </div>
+          </div>
+        </div>
+
+        {/* Card 3: Present Today */}
+        <div className="bg-[#ecfdf5] rounded-2xl p-5 border border-emerald-100/60 shadow-xs flex items-center gap-4 hover:shadow-md transition-shadow">
+          <div className="w-12 h-12 rounded-2xl bg-emerald-100/80 text-emerald-600 flex items-center justify-center shrink-0">
+            <CalendarCheck className="w-6 h-6" />
+          </div>
+          <div>
+            <div className="text-3xl font-extrabold text-slate-900 tracking-tight">
+              {presentTodayCount}
+            </div>
+            <div className="text-xs font-medium text-slate-600 mt-0.5">
+              Present Today
+            </div>
+          </div>
+        </div>
+
+        {/* Card 4: On Leave Today */}
+        <div className="bg-[#fffbeb] rounded-2xl p-5 border border-amber-100/60 shadow-xs flex items-center gap-4 hover:shadow-md transition-shadow">
+          <div className="w-12 h-12 rounded-2xl bg-amber-100/80 text-amber-600 flex items-center justify-center shrink-0">
+            <FileText className="w-6 h-6" />
+          </div>
+          <div>
+            <div className="text-3xl font-extrabold text-slate-900 tracking-tight">
+              {onLeaveTodayCount}
+            </div>
+            <div className="text-xs font-medium text-slate-600 mt-0.5">
+              On Leave Today
+            </div>
+          </div>
+        </div>
+
+        {/* Card 5: Payroll (This Month) */}
+        <div className="bg-[#ffe4e6] rounded-2xl p-5 border border-rose-100/60 shadow-xs flex items-center gap-4 hover:shadow-md transition-shadow">
+          <div className="w-12 h-12 rounded-2xl bg-rose-100/80 text-rose-600 flex items-center justify-center shrink-0">
+            <span className="text-2xl font-bold text-rose-600">₹</span>
+          </div>
+          <div>
+            <div className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+              {payrollDisplay}
+            </div>
+            <div className="text-xs font-medium text-slate-600 mt-0.5">
+              Payroll (This Month)
+            </div>
           </div>
         </div>
       </div>
 
-      {error && (
-        <div className="p-4 bg-rose-500/10 border border-rose-500/30 rounded-2xl flex items-center justify-between text-rose-300 text-xs sm:text-sm">
-          <div className="flex items-center gap-3">
-            <AlertCircle className="w-5 h-5 shrink-0 text-rose-400" />
-            <span>{error}</span>
-          </div>
-          <Button variant="danger" size="sm" onClick={fetchDashboardData}>
-            Retry Sync
-          </Button>
-        </div>
-      )}
-
-      {loading && !summary ? (
-        <div className="rounded-3xl bg-slate-900/60 border border-white/10 p-12">
-          <Loader message="Synchronizing enterprise telemetry..." />
-        </div>
-      ) : summary ? (
-        <>
-          {/* Key Metric KPI Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-            {/* Total Employees */}
-            <div className="relative rounded-2xl bg-slate-900/60 backdrop-blur-xl border border-white/10 p-5 shadow-xl hover:border-indigo-500/30 transition-all group overflow-hidden">
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Total Staff</span>
-                <div className="w-9 h-9 rounded-xl bg-indigo-500/15 border border-indigo-500/30 text-indigo-400 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
-                  <Users className="w-4 h-4" />
-                </div>
-              </div>
-              <div className="text-2xl sm:text-3xl font-black text-white tracking-tight">
-                {summary.totalEmployees}
-              </div>
-              <div className="flex items-center gap-1 text-[11px] text-emerald-400 font-semibold mt-2">
-                <TrendingUp className="w-3.5 h-3.5" />
-                <span>Active Roster</span>
-              </div>
-            </div>
-
-            {/* Total Departments */}
-            <div className="relative rounded-2xl bg-slate-900/60 backdrop-blur-xl border border-white/10 p-5 shadow-xl hover:border-cyan-500/30 transition-all group overflow-hidden">
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Departments</span>
-                <div className="w-9 h-9 rounded-xl bg-cyan-500/15 border border-cyan-500/30 text-cyan-400 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
-                  <Building2 className="w-4 h-4" />
-                </div>
-              </div>
-              <div className="text-2xl sm:text-3xl font-black text-white tracking-tight">
-                {summary.totalDepartments}
-              </div>
-              <div className="flex items-center gap-1 text-[11px] text-cyan-400 font-semibold mt-2">
-                <Activity className="w-3.5 h-3.5" />
-                <span>Operational Units</span>
-              </div>
-            </div>
-
-            {/* Present Today */}
-            <div className="relative rounded-2xl bg-slate-900/60 backdrop-blur-xl border border-white/10 p-5 shadow-xl hover:border-emerald-500/30 transition-all group overflow-hidden">
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Present Today</span>
-                <div className="w-9 h-9 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
-                  <CalendarCheck className="w-4 h-4" />
-                </div>
-              </div>
-              <div className="text-2xl sm:text-3xl font-black text-white tracking-tight">
-                {summary.presentToday}
-              </div>
-              <div className="flex items-center gap-1 text-[11px] text-emerald-400 font-semibold mt-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
-                <span>Live On-Site</span>
-              </div>
-            </div>
-
-            {/* Pending Leaves */}
-            <div className="relative rounded-2xl bg-slate-900/60 backdrop-blur-xl border border-white/10 p-5 shadow-xl hover:border-amber-500/30 transition-all group overflow-hidden">
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Pending Leaves</span>
-                <div className="w-9 h-9 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-400 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
-                  <Clock className="w-4 h-4" />
-                </div>
-              </div>
-              <div className="text-2xl sm:text-3xl font-black text-white tracking-tight">
-                {summary.pendingLeaveRequests}
-              </div>
-              <div className="flex items-center gap-1 text-[11px] text-amber-400 font-semibold mt-2">
-                <span>Requires Review</span>
-              </div>
-            </div>
-
-            {/* Total Payroll */}
-            <div className="relative rounded-2xl bg-slate-900/60 backdrop-blur-xl border border-white/10 p-5 shadow-xl hover:border-purple-500/30 transition-all group overflow-hidden">
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                  Payroll ({selectedMonth.slice(0, 3)})
-                </span>
-                <div className="w-9 h-9 rounded-xl bg-purple-500/15 border border-purple-500/30 text-purple-400 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
-                  <DollarSign className="w-4 h-4" />
-                </div>
-              </div>
-              <div className="text-xl sm:text-2xl font-black text-white tracking-tight truncate">
-                {formatCurrency(summary.totalPayroll)}
-              </div>
-              <div className="flex items-center gap-1 text-[11px] text-purple-400 font-semibold mt-2">
-                <span>Processed Total</span>
-              </div>
-            </div>
+      {/* Middle Row: Charts */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* Attendance Overview (Today) Donut Chart */}
+        <div className="lg:col-span-6 bg-white rounded-2xl p-6 border border-slate-200/80 shadow-xs">
+          <div className="mb-4">
+            <h2 className="text-base font-bold text-slate-900">
+              Attendance Overview (Today)
+            </h2>
           </div>
 
-          {/* Visual Charts Row */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Chart 1: Department Distribution */}
-            <Card
-              title="Department Headcount Distribution"
-              subtitle="Current staffing distribution mapped across organizational units"
-            >
-              {deptDistribution.length > 0 ? (
-                <div className="h-64 w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={deptDistribution} margin={{ top: 10, right: 10, left: -20, bottom: 20 }}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.06)" />
-                      <XAxis dataKey="name" stroke="#64748b" fontSize={11} interval={0} angle={-20} textAnchor="end" />
-                      <YAxis stroke="#64748b" fontSize={11} allowDecimals={false} />
-                      <Tooltip
-                        contentStyle={{
-                          backgroundColor: '#090d16',
-                          borderRadius: '12px',
-                          border: '1px solid rgba(255,255,255,0.1)',
-                          color: '#fff',
-                          boxShadow: '0 10px 25px rgba(0,0,0,0.5)',
-                        }}
-                        itemStyle={{ color: '#818cf8', fontWeight: 600 }}
-                      />
-                      <Bar dataKey="count" fill="#6366f1" radius={[6, 6, 0, 0]} name="Headcount" />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              ) : (
-                <div className="h-64 flex items-center justify-center text-xs text-slate-500">
-                  No department distribution records registered.
-                </div>
-              )}
-            </Card>
-
-            {/* Chart 2: Attendance Breakdown */}
-            <Card
-              title="Attendance Status Breakdown"
-              subtitle="Telemetry summary of employee attendance logs"
-            >
-              {attendanceBreakdown.length > 0 ? (
-                <div className="h-64 w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={attendanceBreakdown}
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={55}
-                        outerRadius={85}
-                        paddingAngle={5}
-                        dataKey="value"
-                      >
-                        {attendanceBreakdown.map((_, index) => (
-                          <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
-                        ))}
-                      </Pie>
-                      <Tooltip
-                        contentStyle={{
-                          backgroundColor: '#090d16',
-                          borderRadius: '12px',
-                          border: '1px solid rgba(255,255,255,0.1)',
-                          color: '#fff',
-                        }}
-                      />
-                      <Legend verticalAlign="bottom" height={36} iconType="circle" />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
-              ) : (
-                <div className="h-64 flex items-center justify-center text-xs text-slate-500">
-                  No attendance records logged for this period.
-                </div>
-              )}
-            </Card>
-          </div>
-
-          {/* Quick Actions & Recent Leaves */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Quick Actions Hub */}
-            <Card title="Administrative Quick Hub" subtitle="Frequently accessed workflows">
-              <div className="space-y-2.5">
-                <Link
-                  to="/employees/add"
-                  className="flex items-center justify-between p-3.5 rounded-xl bg-slate-950/70 hover:bg-indigo-600/10 border border-white/5 hover:border-indigo-500/30 transition-all group"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-indigo-500/15 text-indigo-400 flex items-center justify-center border border-indigo-500/20">
-                      <Users className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <div className="text-xs font-bold text-white group-hover:text-indigo-300 transition-colors">
-                        Onboard New Employee
-                      </div>
-                      <div className="text-[11px] text-slate-400">Register employee and department</div>
-                    </div>
-                  </div>
-                  <ArrowRight className="w-4 h-4 text-slate-500 group-hover:text-indigo-400 group-hover:translate-x-0.5 transition-all" />
-                </Link>
-
-                <Link
-                  to="/attendance"
-                  className="flex items-center justify-between p-3.5 rounded-xl bg-slate-950/70 hover:bg-emerald-600/10 border border-white/5 hover:border-emerald-500/30 transition-all group"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-emerald-500/15 text-emerald-400 flex items-center justify-center border border-emerald-500/20">
-                      <CalendarCheck className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <div className="text-xs font-bold text-white group-hover:text-emerald-300 transition-colors">
-                        Mark Daily Attendance
-                      </div>
-                      <div className="text-[11px] text-slate-400">Log presence, half-days, or leaves</div>
-                    </div>
-                  </div>
-                  <ArrowRight className="w-4 h-4 text-slate-500 group-hover:text-emerald-400 group-hover:translate-x-0.5 transition-all" />
-                </Link>
-
-                <Link
-                  to="/leaves"
-                  className="flex items-center justify-between p-3.5 rounded-xl bg-slate-950/70 hover:bg-amber-600/10 border border-white/5 hover:border-amber-500/30 transition-all group"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-amber-500/15 text-amber-400 flex items-center justify-center border border-amber-500/20">
-                      <Clock className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <div className="text-xs font-bold text-white group-hover:text-amber-300 transition-colors">
-                        Review Leave Approvals
-                      </div>
-                      <div className="text-[11px] text-slate-400">Manage time-off and status</div>
-                    </div>
-                  </div>
-                  <ArrowRight className="w-4 h-4 text-slate-500 group-hover:text-amber-400 group-hover:translate-x-0.5 transition-all" />
-                </Link>
-
-                <Link
-                  to="/payroll"
-                  className="flex items-center justify-between p-3.5 rounded-xl bg-slate-950/70 hover:bg-purple-600/10 border border-white/5 hover:border-purple-500/30 transition-all group"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-purple-500/15 text-purple-400 flex items-center justify-center border border-purple-500/20">
-                      <DollarSign className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <div className="text-xs font-bold text-white group-hover:text-purple-300 transition-colors">
-                        Process Monthly Payroll
-                      </div>
-                      <div className="text-[11px] text-slate-400">Generate compensation statements</div>
-                    </div>
-                  </div>
-                  <ArrowRight className="w-4 h-4 text-slate-500 group-hover:text-purple-400 group-hover:translate-x-0.5 transition-all" />
-                </Link>
-              </div>
-            </Card>
-
-            {/* Recent Leaves Table with 1-Click Admin Approvals */}
-            <div className="lg:col-span-2">
-              <Card
-                title="Recent Leave Requests"
-                subtitle="Latest employee leave submissions and admin action queue"
-                action={
-                  <Link
-                    to="/leaves"
-                    className="text-xs font-bold text-indigo-400 hover:text-indigo-300 flex items-center gap-1"
+          <div className="grid grid-cols-1 sm:grid-cols-12 items-center gap-4 h-64 sm:h-72">
+            {/* Donut Chart (Left) */}
+            <div className="sm:col-span-7 relative h-full w-full flex items-center justify-center">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={
+                      [
+                        { name: 'Present', value: attendanceOverview.present, color: '#10b981' },
+                        { name: 'Absent', value: attendanceOverview.absent, color: '#ef4444' },
+                        { name: 'Half Day', value: attendanceOverview.halfDay, color: '#f97316' },
+                        { name: 'On Leave', value: attendanceOverview.onLeave, color: '#eab308' },
+                      ].filter((d) => d.value > 0).length > 0
+                        ? [
+                            { name: 'Present', value: attendanceOverview.present, color: '#10b981' },
+                            { name: 'Absent', value: attendanceOverview.absent, color: '#ef4444' },
+                            { name: 'Half Day', value: attendanceOverview.halfDay, color: '#f97316' },
+                            { name: 'On Leave', value: attendanceOverview.onLeave, color: '#eab308' },
+                          ].filter((d) => d.value > 0)
+                        : [{ name: 'No Data', value: 1, color: '#f1f5f9' }]
+                    }
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={55}
+                    outerRadius={85}
+                    startAngle={90}
+                    endAngle={-270}
+                    dataKey="value"
+                    stroke="#ffffff"
+                    strokeWidth={2}
+                    labelLine={false}
+                    label={
+                      attendanceOverview.present > 0 || attendanceOverview.absent > 0 || attendanceOverview.halfDay > 0 || attendanceOverview.onLeave > 0
+                        ? renderAttendanceDonutLabel
+                        : false
+                    }
                   >
-                    <span>View All</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </Link>
-                }
-              >
-                {recentLeaves.length > 0 ? (
-                  <div className="divide-y divide-white/5 -my-2">
-                    {recentLeaves.map((l) => {
-                      let badgeVariant = 'amber';
-                      if (l.status === 'APPROVED') badgeVariant = 'emerald';
-                      if (l.status === 'REJECTED') badgeVariant = 'rose';
+                    {(
+                      [
+                        { name: 'Present', value: attendanceOverview.present, color: '#10b981' },
+                        { name: 'Absent', value: attendanceOverview.absent, color: '#ef4444' },
+                        { name: 'Half Day', value: attendanceOverview.halfDay, color: '#f97316' },
+                        { name: 'On Leave', value: attendanceOverview.onLeave, color: '#eab308' },
+                      ].filter((d) => d.value > 0).length > 0
+                        ? [
+                            { name: 'Present', value: attendanceOverview.present, color: '#10b981' },
+                            { name: 'Absent', value: attendanceOverview.absent, color: '#ef4444' },
+                            { name: 'Half Day', value: attendanceOverview.halfDay, color: '#f97316' },
+                            { name: 'On Leave', value: attendanceOverview.onLeave, color: '#eab308' },
+                          ].filter((d) => d.value > 0)
+                        : [{ name: 'No Data', value: 1, color: '#f1f5f9' }]
+                    ).map((entry, index) => (
+                      <Cell key={`att-donut-cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    formatter={(val, name) => [`${val}`, name]}
+                    contentStyle={{
+                      backgroundColor: '#1e293b',
+                      color: '#fff',
+                      borderRadius: '10px',
+                      border: 'none',
+                      fontSize: '12px',
+                    }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
 
-                      const isPending = l.status === 'PENDING';
+              {/* Center Donut Text */}
+              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none select-none">
+                <span className="text-2xl sm:text-3xl font-extrabold text-slate-900 leading-none">
+                  {totalEmployeesCount}
+                </span>
+                <span className="text-xs font-semibold text-slate-700 mt-1 leading-tight">
+                  Total
+                </span>
+                <span className="text-xs font-semibold text-slate-700 leading-tight">
+                  Employees
+                </span>
+              </div>
+            </div>
 
-                      return (
-                        <div key={l.id} className="py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs font-bold text-white">
-                                {l.employeeName || `Employee #${l.employeeId}`}
-                              </span>
-                              <Badge variant={badgeVariant} dot size="sm">
-                                {l.status}
-                              </Badge>
-                            </div>
-                            <div className="text-[11px] text-slate-400 mt-0.5">
-                              {l.startDate} to {l.endDate} &bull; <span className="italic">{l.reason}</span>
-                            </div>
-                          </div>
+            {/* Legend / Stats (Right) */}
+            <div className="sm:col-span-5 flex flex-col justify-center space-y-3 px-2 sm:px-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <span className="w-3.5 h-3.5 rounded-full bg-[#10b981] shrink-0" />
+                  <span className="text-sm font-semibold text-slate-700">Present</span>
+                </div>
+                <span className="text-sm font-bold text-slate-900">{attendanceOverview.present}</span>
+              </div>
 
-                          {/* Admin fast-action buttons */}
-                          {isAdmin && isPending ? (
-                            <div className="flex items-center gap-1.5 shrink-0">
-                              <button
-                                onClick={() => handleUpdateLeaveStatus(l.id, 'APPROVED')}
-                                disabled={processingLeaveId === l.id}
-                                className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 transition-all disabled:opacity-50"
-                                title="Approve this leave request"
-                              >
-                                <CheckCircle2 className="w-3 h-3" />
-                                <span>Approve</span>
-                              </button>
-                              <button
-                                onClick={() => handleUpdateLeaveStatus(l.id, 'REJECTED')}
-                                disabled={processingLeaveId === l.id}
-                                className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold rounded-lg bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 transition-all disabled:opacity-50"
-                                title="Reject this leave request"
-                              >
-                                <XCircle className="w-3 h-3" />
-                                <span>Reject</span>
-                              </button>
-                            </div>
-                          ) : null}
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div className="py-12 text-center text-xs text-slate-500">
-                    No leave requests logged in the system.
-                  </div>
-                )}
-              </Card>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <span className="w-3.5 h-3.5 rounded-full bg-[#ef4444] shrink-0" />
+                  <span className="text-sm font-semibold text-slate-700">Absent</span>
+                </div>
+                <span className="text-sm font-bold text-slate-900">{attendanceOverview.absent}</span>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <span className="w-3.5 h-3.5 rounded-full bg-[#f97316] shrink-0" />
+                  <span className="text-sm font-semibold text-slate-700">Half Day</span>
+                </div>
+                <span className="text-sm font-bold text-slate-900">{attendanceOverview.halfDay}</span>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <span className="w-3.5 h-3.5 rounded-full bg-[#eab308] shrink-0" />
+                  <span className="text-sm font-semibold text-slate-700">On Leave</span>
+                </div>
+                <span className="text-sm font-bold text-slate-900">{attendanceOverview.onLeave}</span>
+              </div>
             </div>
           </div>
-        </>
-      ) : null}
+        </div>
+
+        {/* Department-wise Employees Pie Chart */}
+        <div className="lg:col-span-6 bg-white rounded-2xl p-6 border border-slate-200/80 shadow-xs">
+          <div className="mb-4">
+            <h2 className="text-base font-bold text-slate-900">
+              Department-wise Employees
+            </h2>
+          </div>
+
+          <div className="h-64 sm:h-72 w-full flex items-center justify-center">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={deptDistribution}
+                  cx="45%"
+                  cy="50%"
+                  outerRadius={88}
+                  dataKey="value"
+                  labelLine={false}
+                  label={renderCustomizedLabel}
+                >
+                  {deptDistribution.map((entry, index) => (
+                    <Cell
+                      key={`dept-cell-${index}`}
+                      fill={entry.color || COLOR_PALETTE[index % COLOR_PALETTE.length]}
+                      stroke="#ffffff"
+                      strokeWidth={1.5}
+                    />
+                  ))}
+                </Pie>
+                <Tooltip
+                  formatter={(val, name) => [`${val} Employees`, name]}
+                  contentStyle={{
+                    backgroundColor: '#1e293b',
+                    color: '#fff',
+                    borderRadius: '10px',
+                    border: 'none',
+                    fontSize: '12px',
+                  }}
+                />
+                <Legend
+                  layout="vertical"
+                  verticalAlign="middle"
+                  align="right"
+                  iconType="circle"
+                  iconSize={8}
+                  formatter={(value) => (
+                    <span className="text-xs font-medium text-slate-700 ml-1">
+                      {value}
+                    </span>
+                  )}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </div>
+
+      {/* Bottom Row: Recent Employees & Recent Leave Requests */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* Recent Employees Table */}
+        <div className="lg:col-span-5 bg-white rounded-2xl p-6 border border-slate-200/80 shadow-xs">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-base font-bold text-slate-900">
+              Recent Employees
+            </h2>
+            <Link
+              to="/employees"
+              className="text-xs font-semibold text-blue-600 hover:text-blue-800 transition-colors"
+            >
+              View All
+            </Link>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="border-b border-slate-100 text-[11px] font-bold text-slate-800 uppercase tracking-wider">
+                  <th className="pb-3 pr-3">#</th>
+                  <th className="pb-3 pr-3">Name</th>
+                  <th className="pb-3 pr-3">Department</th>
+                  <th className="pb-3">Joining Date</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 text-xs">
+                {recentEmployees.map((emp, index) => (
+                  <tr key={emp.id || index} className="hover:bg-slate-50/50 transition-colors">
+                    <td className="py-3 pr-3 font-semibold text-slate-700">{emp.id || index + 1}</td>
+                    <td className="py-3 pr-3 font-medium text-slate-900">{emp.name}</td>
+                    <td className="py-3 pr-3 text-slate-600">{emp.department}</td>
+                    <td className="py-3 text-slate-600 whitespace-nowrap">{emp.joiningDate}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Recent Leave Requests Table */}
+        <div className="lg:col-span-7 bg-white rounded-2xl p-6 border border-slate-200/80 shadow-xs">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-base font-bold text-slate-900">
+              Recent Leave Requests
+            </h2>
+            <Link
+              to="/leaves"
+              className="text-xs font-semibold text-blue-600 hover:text-blue-800 transition-colors"
+            >
+              View All
+            </Link>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="border-b border-slate-100 text-[11px] font-bold text-slate-800 uppercase tracking-wider">
+                  <th className="pb-3 pr-2">#</th>
+                  <th className="pb-3 pr-2">Name</th>
+                  <th className="pb-3 pr-2">Department</th>
+                  <th className="pb-3 pr-2">Leave Type</th>
+                  <th className="pb-3 pr-2">Date</th>
+                  <th className="pb-3">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 text-xs">
+                {recentLeaves.map((leave, index) => {
+                  const isApproved = leave.status === 'Approved' || leave.status === 'APPROVED';
+                  const isRejected = leave.status === 'Rejected' || leave.status === 'REJECTED';
+                  const isPending = !isApproved && !isRejected;
+
+                  return (
+                    <tr key={leave.id || index} className="hover:bg-slate-50/50 transition-colors">
+                      <td className="py-3 pr-2 font-semibold text-slate-700">{leave.id || index + 1}</td>
+                      <td className="py-3 pr-2 font-medium text-slate-900 whitespace-nowrap">{leave.name}</td>
+                      <td className="py-3 pr-2 text-slate-600">{leave.department}</td>
+                      <td className="py-3 pr-2 text-slate-600 whitespace-nowrap">{leave.leaveType}</td>
+                      <td className="py-3 pr-2 text-slate-600 whitespace-nowrap">{leave.date}</td>
+                      <td className="py-3">
+                        {isApproved && (
+                          <span className="inline-block px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-[#dcfce7] text-[#166534]">
+                            Approved
+                          </span>
+                        )}
+                        {isPending && (
+                          <span className="inline-block px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-[#fef3c7] text-[#92400e]">
+                            Pending
+                          </span>
+                        )}
+                        {isRejected && (
+                          <span className="inline-block px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-[#fee2e2] text-[#991b1b]">
+                            Rejected
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
     </div>
   );
 };

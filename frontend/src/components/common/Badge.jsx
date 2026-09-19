@@ -1,12 +1,33 @@
 import React from 'react';
 
+const STATUS_CONFIG = {
+  PRESENT: { label: 'Present', variant: 'emerald' },
+  ABSENT: { label: 'Absent', variant: 'rose' },
+  HALF_DAY: { label: 'Half Day', variant: 'amber' },
+  LEAVE: { label: 'On Leave', variant: 'purple' },
+  PENDING: { label: 'Pending', variant: 'amber' },
+  APPROVED: { label: 'Approved', variant: 'emerald' },
+  REJECTED: { label: 'Rejected', variant: 'rose' },
+};
+
 export const Badge = ({
   children,
+  status,
   variant = 'slate',
   size = 'md',
   className = '',
   dot = false,
 }) => {
+  let resolvedLabel = children;
+  let resolvedVariant = variant;
+
+  if (status && STATUS_CONFIG[status]) {
+    resolvedLabel = STATUS_CONFIG[status].label;
+    resolvedVariant = STATUS_CONFIG[status].variant;
+  } else if (status) {
+    resolvedLabel = status;
+  }
+
   const variants = {
     slate: 'bg-slate-100 text-slate-700 border-slate-200',
     indigo: 'bg-blue-50 text-blue-700 border-blue-200',
@@ -35,14 +56,15 @@ export const Badge = ({
 
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-full border ${variants[variant] || variants.slate} ${sizes[size] || sizes.md} ${className}`}
+      className={`inline-flex items-center gap-1.5 rounded-full border ${variants[resolvedVariant] || variants.slate} ${sizes[size] || sizes.md} ${className}`}
     >
-      {dot && (
-        <span className={`w-1.5 h-1.5 rounded-full ${dots[variant] || dots.slate}`} />
+      {(dot || status) && (
+        <span className={`w-1.5 h-1.5 rounded-full ${dots[resolvedVariant] || dots.slate}`} />
       )}
-      <span>{children}</span>
+      <span>{resolvedLabel}</span>
     </span>
   );
 };
 
 export default Badge;
+

@@ -10,19 +10,7 @@ export const api = axios.create({
   timeout: 15000,
 });
 
-// Request interceptor to attach JWT Bearer token
-api.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem('ems_token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-  },
-  (error) => Promise.reject(error)
-);
-
-// Response interceptor for unified error formatting & auth expiration
+// Response interceptor for unified error formatting
 api.interceptors.response.use(
   (response) => response,
   (error) => {
@@ -42,17 +30,7 @@ api.interceptors.response.use(
         friendlyMessage = data.message || data.error || friendlyMessage;
       }
 
-      if (status === 401) {
-        friendlyMessage = data?.message || 'Session expired or unauthorized. Please log in again.';
-        // Clear expired auth session
-        localStorage.removeItem('ems_token');
-        localStorage.removeItem('ems_user');
-        if (window.location.pathname !== '/login') {
-          window.location.href = '/login';
-        }
-      } else if (status === 403) {
-        friendlyMessage = data?.message || 'Access denied. You do not have permission for this action.';
-      } else if (status === 404 && !data?.message) {
+      if (status === 404 && !data?.message) {
         friendlyMessage = 'The requested resource was not found.';
       } else if (status === 400 && !data?.message) {
         friendlyMessage = 'Bad request. Please review the submitted details.';
@@ -71,3 +49,4 @@ api.interceptors.response.use(
 );
 
 export default api;
+

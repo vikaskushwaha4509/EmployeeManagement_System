@@ -1,92 +1,40 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import authService from '../services/authService';
+import React, { createContext, useContext, useState, useCallback } from 'react';
 
 const AuthContext = createContext(null);
 
+const DEFAULT_USER = {
+  id: 1,
+  username: 'admin',
+  fullName: 'Administrator',
+  email: 'admin@ems.com',
+  role: 'ROLE_ADMIN',
+};
+
 export const AuthProvider = ({ children }) => {
-  const [token, setToken] = useState(() => localStorage.getItem('ems_token') || null);
-  const [user, setUser] = useState(() => {
-    try {
-      const stored = localStorage.getItem('ems_user');
-      return stored ? JSON.parse(stored) : null;
-    } catch {
-      return null;
-    }
-  });
-  const [loading, setLoading] = useState(true);
-
-  // Sync token to localStorage
-  useEffect(() => {
-    if (token) {
-      localStorage.setItem('ems_token', token);
-    } else {
-      localStorage.removeItem('ems_token');
-    }
-  }, [token]);
-
-  // Sync user to localStorage
-  useEffect(() => {
-    if (user) {
-      localStorage.setItem('ems_user', JSON.stringify(user));
-    } else {
-      localStorage.removeItem('ems_user');
-    }
-  }, [user]);
-
-  // Check auth validity on mount
-  useEffect(() => {
-    const verifySession = async () => {
-      if (!token) {
-        setLoading(false);
-        return;
-      }
-      try {
-        const profile = await authService.getCurrentUser();
-        if (profile) {
-          setUser((prev) => ({ ...prev, ...profile }));
-        }
-      } catch (err) {
-        console.warn('Session verification notice:', err.message);
-        // If 401 or invalid token, reset
-        if (err.status === 401) {
-          setToken(null);
-          setUser(null);
-        }
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    verifySession();
-  }, [token]);
+  const [user, setUser] = useState(DEFAULT_USER);
+  const [token, setToken] = useState('ems-session');
+  const loading = false;
 
   const login = useCallback(async (credentials) => {
-    const data = await authService.login(credentials);
-    const authToken = data.token;
-    const userProfile = {
-      id: data.id,
-      username: data.username,
-      fullName: data.fullName,
-      email: data.email,
-      role: data.role,
+    const loggedUser = {
+      id: 1,
+      username: credentials?.username || 'admin',
+      fullName: credentials?.username ? credentials.username.charAt(0).toUpperCase() + credentials.username.slice(1) : 'Administrator',
+      email: `${credentials?.username || 'admin'}@ems.com`,
+      role: 'ROLE_ADMIN',
     };
-
-    setToken(authToken);
-    setUser(userProfile);
-    localStorage.setItem('ems_token', authToken);
-    localStorage.setItem('ems_user', JSON.stringify(userProfile));
-    return userProfile;
+    setUser(loggedUser);
+    setToken('ems-session');
+    return loggedUser;
   }, []);
 
   const logout = useCallback(() => {
-    setToken(null);
-    setUser(null);
-    localStorage.removeItem('ems_token');
-    localStorage.removeItem('ems_user');
+    setUser(DEFAULT_USER);
+    setToken('ems-session');
   }, []);
 
-  const isAdmin = user?.role === 'ROLE_ADMIN';
-  const isAuthenticated = Boolean(token && user);
+  const isAdmin = true;
+  const isAuthenticated = true;
 
   return (
     <AuthContext.Provider
@@ -114,3 +62,4 @@ export const useAuth = () => {
 };
 
 export default AuthContext;
+

@@ -1,22 +1,14 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
-  Receipt,
   Plus,
   Edit2,
   Trash2,
-  AlertCircle,
-  DollarSign,
-  User,
-  Calculator,
   Calendar,
-  ShieldCheck,
 } from 'lucide-react';
-import { useAuth } from '../context/AuthContext';
 import payrollService from '../services/payrollService';
 import employeeService from '../services/employeeService';
 import { useToast } from '../context/ToastContext';
 import { MONTHS } from '../constants/enums';
-import PageHeader from '../components/common/PageHeader';
 import Button from '../components/common/Button';
 import SearchBar from '../components/common/SearchBar';
 import Table from '../components/common/Table';
@@ -31,34 +23,30 @@ export const Payroll = () => {
   const currentMonthName = MONTHS[currentDate.getMonth()];
   const currentYear = currentDate.getFullYear();
 
-  const { isAdmin } = useAuth();
   const [payrolls, setPayrolls] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
 
-  // Filters & Pagination
   const [searchTerm, setSearchTerm] = useState('');
   const [monthFilter, setMonthFilter] = useState('');
   const [yearFilter, setYearFilter] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 10;
 
-  // Modal Form state
   const [modalOpen, setModalOpen] = useState(false);
   const [editingPayroll, setEditingPayroll] = useState(null);
   const [formData, setFormData] = useState({
+    employeeId: '',
     month: currentMonthName,
     year: currentYear,
     basicSalary: '',
-    bonus: '0',
-    deduction: '0',
-    employeeId: '',
+    allowance: '0',
+    deductions: '0',
+    paymentDate: new Date().toISOString().split('T')[0],
   });
   const [formErrors, setFormErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
 
-  // Delete dialog state
   const [payrollToDelete, setPayrollToDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
 
@@ -66,7 +54,6 @@ export const Payroll = () => {
 
   const loadData = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const [payrollData, empData] = await Promise.all([
         payrollService.getAllPayrolls(),
@@ -76,87 +63,72 @@ export const Payroll = () => {
       setEmployees(empData || []);
     } catch (err) {
       console.error('Error loading payrolls:', err);
-      setError(err.message || 'Failed to load payroll records from backend.');
+      toastError('Failed to load payroll records.');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [toastError]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
 
-  const handleOpenAddModal = () => {
-    if (!isAdmin) {
-      toastError('Only administrators can generate payroll statements.');
-      return;
-    }
+  const handleOpenAdd = () => {
     setEditingPayroll(null);
-    const firstEmp = employees[0];
+    const initialEmp = employees[0];
     setFormData({
+      employeeId: initialEmp?.id ? String(initialEmp.id) : '',
       month: currentMonthName,
       year: currentYear,
-      basicSalary: firstEmp ? String(firstEmp.salary || '') : '',
-      bonus: '0',
-      deduction: '0',
-      employeeId: firstEmp ? String(firstEmp.id) : '',
+      basicSalary: initialEmp?.salary ? String(initialEmp.salary) : '50000',
+      allowance: '5000',
+      deductions: '2000',
+      paymentDate: new Date().toISOString().split('T')[0],
     });
     setFormErrors({});
     setModalOpen(true);
   };
 
-  const handleOpenEditModal = (item) => {
-    if (!isAdmin) {
-      toastError('Only administrators can modify payroll statements.');
-      return;
-    }
-    setEditingPayroll(item);
+  const handleOpenEdit = (payroll) => {
+    setEditingPayroll(payroll);
     setFormData({
-      month: item.month || currentMonthName,
-      year: item.year || currentYear,
-      basicSalary: item.basicSalary !== undefined ? String(item.basicSalary) : '',
-      bonus: item.bonus !== undefined ? String(item.bonus) : '0',
-      deduction: item.deduction !== undefined ? String(item.deduction) : '0',
-      employeeId: item.employeeId ? String(item.employeeId) : '',
+      employeeId: payroll.employeeId ? String(payroll.employeeId) : '',
+      month: payroll.month || currentMonthName,
+      year: payroll.year || currentYear,
+      basicSalary: String(payroll.basicSalary ?? ''),
+      allowance: String(payroll.allowance ?? payroll.bonus ?? '0'),
+      deductions: String(payroll.deductions ?? payroll.deduction ?? '0'),
+      paymentDate: payroll.paymentDate || new Date().toISOString().split('T')[0],
     });
     setFormErrors({});
     setModalOpen(true);
   };
 
   const handleEmployeeSelect = (empId) => {
-    const selectedEmp = employees.find((e) => String(e.id) === String(empId));
+    const emp = employees.find((e) => String(e.id) === empId);
     setFormData((prev) => ({
       ...prev,
       employeeId: empId,
-      basicSalary: selectedEmp?.salary ? String(selectedEmp.salary) : prev.basicSalary,
+      basicSalary: emp?.salary ? String(emp.salary) : prev.basicSalary,
     }));
-    if (formErrors.employeeId) {
-      setFormErrors((prev) => ({ ...prev, employeeId: null }));
-    }
   };
-
-  const calculatedNetSalary = useMemo(() => {
-    const basic = parseFloat(formData.basicSalary) || 0;
-    const bonus = parseFloat(formData.bonus) || 0;
-    const ded = parseFloat(formData.deduction) || 0;
-    return Math.max(0, basic + bonus - ded);
-  }, [formData.basicSalary, formData.bonus, formData.deduction]);
 
   const validate = () => {
     const errs = {};
     if (!formData.employeeId) errs.employeeId = 'Employee selection is required.';
-    if (!formData.month) errs.month = 'Month is required.';
-    if (!formData.year || isNaN(Number(formData.year))) errs.year = 'Valid year is required.';
-    if (formData.basicSalary === '' || isNaN(Number(formData.basicSalary)) || Number(formData.basicSalary) < 0) {
-      errs.basicSalary = 'Basic salary must be a positive number.';
+    if (!formData.year || isNaN(Number(formData.year)) || Number(formData.year) < 1900 || Number(formData.year) > 2100) {
+      errs.year = 'Please enter a valid 4-digit year (e.g. 2026).';
     }
-    if (formData.bonus === '' || isNaN(Number(formData.bonus)) || Number(formData.bonus) < 0) {
-      errs.bonus = 'Bonus must be 0 or positive.';
+    if (!formData.basicSalary || isNaN(Number(formData.basicSalary)) || Number(formData.basicSalary) < 0) {
+      errs.basicSalary = 'Basic salary must be a valid positive number.';
     }
-    if (formData.deduction === '' || isNaN(Number(formData.deduction)) || Number(formData.deduction) < 0) {
-      errs.deduction = 'Deduction must be 0 or positive.';
+    if (isNaN(Number(formData.allowance)) || Number(formData.allowance) < 0) {
+      errs.allowance = 'Allowance must be a valid positive number.';
     }
-
+    if (isNaN(Number(formData.deductions)) || Number(formData.deductions) < 0) {
+      errs.deductions = 'Deductions must be a valid positive number.';
+    }
+    if (!formData.paymentDate) errs.paymentDate = 'Payment date is required.';
     setFormErrors(errs);
     return Object.keys(errs).length === 0;
   };
@@ -168,418 +140,372 @@ export const Payroll = () => {
     setSubmitting(true);
     try {
       const payload = {
+        employeeId: Number(formData.employeeId),
         month: formData.month,
         year: Number(formData.year),
         basicSalary: Number(formData.basicSalary),
-        bonus: Number(formData.bonus),
-        deduction: Number(formData.deduction),
-        employeeId: Number(formData.employeeId),
+        bonus: Number(formData.allowance || 0),
+        deduction: Number(formData.deductions || 0),
+        allowance: Number(formData.allowance || 0),
+        deductions: Number(formData.deductions || 0),
+        paymentDate: formData.paymentDate,
       };
 
       if (editingPayroll) {
         await payrollService.updatePayroll(editingPayroll.id, payload);
-        success('Payroll statement updated.');
+        success('Payroll entry updated successfully.');
       } else {
         await payrollService.createPayroll(payload);
-        success('Payroll statement generated successfully.');
+        success('Payroll entry created successfully.');
       }
       setModalOpen(false);
       loadData();
     } catch (err) {
-      toastError(err.message || 'Failed to save payroll record.');
+      toastError(err.message || 'Failed to save payroll entry.');
     } finally {
       setSubmitting(false);
     }
   };
 
-  const handleDeleteConfirm = async () => {
+  const handleDelete = async () => {
     if (!payrollToDelete) return;
-    if (!isAdmin) {
-      toastError('Only administrators can delete payroll statements.');
-      setPayrollToDelete(null);
-      return;
-    }
-
     setDeleting(true);
     try {
       await payrollService.deletePayroll(payrollToDelete.id);
-      success('Payroll record deleted.');
+      success('Payroll entry deleted.');
       setPayrollToDelete(null);
       loadData();
     } catch (err) {
-      toastError(err.message || 'Failed to delete payroll record.');
+      toastError(err.message || 'Failed to delete payroll entry.');
     } finally {
       setDeleting(false);
     }
   };
 
-  // Filtered Payroll
+  const formatCurrency = (val) => {
+    return new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR',
+      maximumFractionDigits: 0,
+    }).format(val || 0);
+  };
+
   const filteredPayrolls = useMemo(() => {
-    return payrolls.filter((p) => {
-      const name = (p.employeeName || '').toLowerCase();
+    return payrolls.filter((item) => {
+      const name = (item.employeeName || '').toLowerCase();
       const term = searchTerm.toLowerCase();
-
-      const matchesSearch = name.includes(term) || String(p.employeeId).includes(term);
-      const matchesMonth = !monthFilter || p.month === monthFilter;
-      const matchesYear = !yearFilter || String(p.year) === String(yearFilter);
-
+      const matchesSearch = name.includes(term) || String(item.employeeId).includes(term);
+      const matchesMonth = !monthFilter || item.month === monthFilter;
+      const matchesYear = !yearFilter || String(item.year).includes(yearFilter.trim());
       return matchesSearch && matchesMonth && matchesYear;
     });
   }, [payrolls, searchTerm, monthFilter, yearFilter]);
 
-  // Aggregate totals
-  const totalNetFiltered = useMemo(() => {
-    return filteredPayrolls.reduce((sum, p) => sum + (p.netSalary || 0), 0);
-  }, [filteredPayrolls]);
-
-  // Paginated
   const totalPages = Math.ceil(filteredPayrolls.length / pageSize) || 1;
   const paginatedPayrolls = useMemo(() => {
     const start = (currentPage - 1) * pageSize;
     return filteredPayrolls.slice(start, start + pageSize);
   }, [filteredPayrolls, currentPage, pageSize]);
 
-  const formatCurrency = (val) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      maximumFractionDigits: 0,
-    }).format(val || 0);
-  };
-
   const columns = [
     {
-      header: 'Staff Member',
-      key: 'employee',
+      header: 'Employee',
+      accessor: 'employeeName',
       render: (row) => (
-        <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-xl bg-purple-500/15 border border-purple-500/30 flex items-center justify-center text-purple-300 text-xs font-bold">
-            <User className="w-4 h-4" />
+        <div>
+          <div className="font-semibold text-sm text-slate-800">
+            {row.employeeName || `Employee #${row.employeeId}`}
           </div>
-          <div>
-            <div className="text-xs font-bold text-white">
-              {row.employeeName || `Employee #${row.employeeId}`}
-            </div>
-            <div className="text-[10px] text-slate-400 font-mono">ID: #{row.employeeId}</div>
-          </div>
+          <div className="text-xs text-slate-500">ID: {row.employeeId}</div>
         </div>
       ),
     },
     {
-      header: 'Pay Cycle',
-      key: 'period',
+      header: 'Pay Period',
+      accessor: 'period',
       render: (row) => (
-        <div className="flex items-center gap-1.5 text-xs text-slate-300 font-mono">
-          <Calendar className="w-3.5 h-3.5 text-slate-500" />
-          <span>
-            {row.month} {row.year}
-          </span>
-        </div>
+        <span className="inline-flex items-center gap-1 text-xs font-semibold text-slate-700 bg-slate-100 px-2 py-1 rounded-md">
+          <Calendar className="w-3.5 h-3.5 text-slate-400" />
+          {row.month} {row.year}
+        </span>
       ),
     },
     {
-      header: 'Base Salary',
+      header: 'Basic Salary',
       accessor: 'basicSalary',
       render: (row) => (
-        <span className="text-xs text-slate-300 font-mono">{formatCurrency(row.basicSalary)}</span>
+        <span className="text-sm text-slate-700">{formatCurrency(row.basicSalary)}</span>
       ),
     },
     {
-      header: 'Bonus Incentive',
-      accessor: 'bonus',
+      header: 'Allowance / Bonus',
+      accessor: 'allowance',
       render: (row) => (
-        <span className="text-xs text-emerald-400 font-mono font-semibold">
-          +{formatCurrency(row.bonus)}
+        <span className="text-sm text-emerald-600">
+          +{formatCurrency(row.allowance ?? row.bonus ?? 0)}
         </span>
       ),
     },
     {
-      header: 'Withholdings',
-      accessor: 'deduction',
+      header: 'Deductions',
+      accessor: 'deductions',
       render: (row) => (
-        <span className="text-xs text-rose-400 font-mono font-semibold">
-          -{formatCurrency(row.deduction)}
+        <span className="text-sm text-rose-600">
+          -{formatCurrency(row.deductions ?? row.deduction ?? 0)}
         </span>
       ),
     },
     {
-      header: 'Disbursed Net Payout',
+      header: 'Net Salary',
       accessor: 'netSalary',
+      render: (row) => {
+        const basic = Number(row.basicSalary || 0);
+        const bonus = Number(row.allowance ?? row.bonus ?? 0);
+        const ded = Number(row.deductions ?? row.deduction ?? 0);
+        const net = row.netSalary ?? (basic + bonus - ded);
+        return (
+          <span className="text-sm font-bold text-slate-900">
+            {formatCurrency(net)}
+          </span>
+        );
+      },
+    },
+    {
+      header: 'Payment Date',
+      accessor: 'paymentDate',
       render: (row) => (
-        <span className="text-xs font-black text-white bg-indigo-500/20 border border-indigo-500/30 px-2.5 py-1 rounded-xl font-mono shadow-sm">
-          {formatCurrency(row.netSalary)}
-        </span>
+        <span className="text-xs text-slate-500">{row.paymentDate || 'N/A'}</span>
       ),
     },
     {
       header: 'Actions',
-      key: 'actions',
-      className: 'text-right',
-      cellClassName: 'text-right',
+      accessor: 'actions',
       render: (row) => (
-        <div className="flex items-center justify-end gap-1.5">
-          {isAdmin ? (
-            <>
-              <button
-                onClick={() => handleOpenEditModal(row)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-amber-300 hover:bg-amber-500/15 transition-all"
-                title="Edit Payroll"
-              >
-                <Edit2 className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() => setPayrollToDelete(row)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/15 transition-all"
-                title="Delete Record"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
-            </>
-          ) : (
-            <span className="text-[11px] text-slate-500 italic">Admin Protected</span>
-          )}
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => handleOpenEdit(row)}
+            className="p-1.5 text-slate-500 hover:text-amber-600 hover:bg-slate-100 rounded-lg transition-colors"
+            title="Edit"
+          >
+            <Edit2 className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => setPayrollToDelete(row)}
+            className="p-1.5 text-slate-500 hover:text-red-600 hover:bg-slate-100 rounded-lg transition-colors"
+            title="Delete"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
         </div>
       ),
     },
   ];
 
+  const employeeOptions = employees.map((emp) => ({
+    value: String(emp.id),
+    label: `${emp.firstName} ${emp.lastName} (${emp.designation || 'Staff'})`,
+  }));
+
+  const monthOptions = MONTHS.map((m) => ({ value: m, label: m }));
+
+  const calculatedNet =
+    Number(formData.basicSalary || 0) +
+    Number(formData.allowance || 0) -
+    Number(formData.deductions || 0);
+
   return (
-    <div className="space-y-6 select-none font-sans">
-      <PageHeader
-        title="Payroll & Compensations"
-        description="Process salaries, allocate bonuses, configure withholdings, and disburse compensation statements"
-        action={
-          isAdmin && (
-            <Button variant="primary" icon={Plus} onClick={handleOpenAddModal}>
-              Generate Payroll
-            </Button>
-          )
-        }
-      />
-
-      {/* Summary KPI Banner */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-slate-900/60 backdrop-blur-xl p-5 rounded-2xl border border-white/10 shadow-xl flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-purple-500/15 border border-purple-500/30 text-purple-400 flex items-center justify-center shrink-0">
-            <DollarSign className="w-6 h-6" />
-          </div>
-          <div>
-            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Total Filtered Payout</p>
-            <p className="text-2xl font-black text-white font-mono mt-0.5">{formatCurrency(totalNetFiltered)}</p>
-          </div>
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-bold text-slate-800">Payroll Management</h1>
+          <p className="text-sm text-slate-500 mt-0.5">
+            Manage employee compensation and payroll records
+          </p>
         </div>
-
-        <div className="bg-slate-900/60 backdrop-blur-xl p-5 rounded-2xl border border-white/10 shadow-xl flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-indigo-500/15 border border-indigo-500/30 text-indigo-400 flex items-center justify-center shrink-0">
-            <Receipt className="w-6 h-6" />
-          </div>
-          <div>
-            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Payroll Records</p>
-            <p className="text-2xl font-black text-white mt-0.5">{payrolls.length} statements</p>
-          </div>
-        </div>
-
-        <div className="bg-slate-900/60 backdrop-blur-xl p-5 rounded-2xl border border-white/10 shadow-xl flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 flex items-center justify-center shrink-0">
-            <Calculator className="w-6 h-6" />
-          </div>
-          <div>
-            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Filtered Statements</p>
-            <p className="text-2xl font-black text-white mt-0.5">{filteredPayrolls.length} rows</p>
-          </div>
-        </div>
+        <Button
+          variant="primary"
+          icon={Plus}
+          onClick={handleOpenAdd}
+        >
+          Generate Payroll
+        </Button>
       </div>
 
-      {/* Filter Bar */}
-      <div className="bg-slate-900/60 backdrop-blur-xl p-4 sm:p-5 rounded-2xl border border-white/10 shadow-xl flex flex-col md:flex-row items-center justify-between gap-4">
-        <SearchBar
-          value={searchTerm}
-          onChange={(val) => {
-            setSearchTerm(val);
-            setCurrentPage(1);
-          }}
-          placeholder="Search by staff member or ID..."
-          className="w-full md:max-w-xs"
-        />
+      {/* Filters */}
+      <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div className="w-full sm:w-80">
+          <SearchBar
+            value={searchTerm}
+            onChange={(val) => {
+              setSearchTerm(val);
+              setCurrentPage(1);
+            }}
+            placeholder="Search employee..."
+          />
+        </div>
 
-        <div className="flex items-center gap-3 w-full md:w-auto">
+        <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
           <select
             value={monthFilter}
             onChange={(e) => {
               setMonthFilter(e.target.value);
               setCurrentPage(1);
             }}
-            className="px-3 py-2 text-xs font-semibold bg-slate-950/80 border border-white/10 rounded-xl text-slate-200 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+            className="px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg text-slate-700 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
           >
-            <option value="" className="bg-slate-900 text-white">All Months</option>
+            <option value="">All Months</option>
             {MONTHS.map((m) => (
-              <option key={m} value={m} className="bg-slate-900 text-white">
+              <option key={m} value={m}>
                 {m}
               </option>
             ))}
           </select>
 
-          <input
-            type="number"
-            placeholder="Year (e.g. 2026)"
-            value={yearFilter}
-            onChange={(e) => {
-              setYearFilter(e.target.value);
-              setCurrentPage(1);
-            }}
-            className="w-32 px-3 py-2 text-xs font-semibold bg-slate-950/80 border border-white/10 rounded-xl text-slate-200 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-          />
+          {/* Manually Editable Year Filter */}
+          <div className="flex items-center gap-1.5">
+            <input
+              type="number"
+              value={yearFilter}
+              onChange={(e) => {
+                setYearFilter(e.target.value);
+                setCurrentPage(1);
+              }}
+              placeholder="Filter Year (e.g. 2026)"
+              className="w-40 px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg text-slate-700 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+            />
+          </div>
 
           {(searchTerm || monthFilter || yearFilter) && (
-            <Button
-              variant="ghost"
-              size="sm"
+            <button
               onClick={() => {
                 setSearchTerm('');
                 setMonthFilter('');
                 setYearFilter('');
                 setCurrentPage(1);
               }}
+              className="text-xs text-blue-600 hover:text-blue-800 font-medium"
             >
-              Clear
-            </Button>
+              Reset
+            </button>
           )}
         </div>
       </div>
 
-      {error && (
-        <div className="p-4 bg-rose-500/10 border border-rose-500/30 rounded-2xl flex items-center justify-between text-rose-300 text-xs sm:text-sm">
-          <div className="flex items-center gap-3">
-            <AlertCircle className="w-5 h-5 shrink-0 text-rose-400" />
-            <span>{error}</span>
+      {/* Table */}
+      <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+        <Table
+          columns={columns}
+          data={paginatedPayrolls}
+          loading={loading}
+          emptyMessage="No payroll records found."
+        />
+
+        {totalPages > 1 && (
+          <div className="p-4 border-t border-slate-100 flex items-center justify-between">
+            <span className="text-xs text-slate-500">
+              Showing {(currentPage - 1) * pageSize + 1} to{' '}
+              {Math.min(currentPage * pageSize, filteredPayrolls.length)} of{' '}
+              {filteredPayrolls.length} records
+            </span>
+            <Pagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              onPageChange={setCurrentPage}
+            />
           </div>
-          <Button variant="danger" size="sm" onClick={loadData}>
-            Retry
-          </Button>
-        </div>
-      )}
+        )}
+      </div>
 
-      {/* Payroll Table */}
-      <Table
-        columns={columns}
-        data={paginatedPayrolls}
-        isLoading={loading}
-        emptyMessage="No payroll records found"
-        emptyDescription={
-          searchTerm || monthFilter || yearFilter
-            ? 'No payroll records match your filter criteria.'
-            : 'No payroll records have been generated in the system yet.'
-        }
-        emptyActionLabel={!searchTerm && !monthFilter && !yearFilter && isAdmin ? 'Generate First Statement' : undefined}
-        onEmptyAction={handleOpenAddModal}
-      />
-
-      {/* Pagination */}
-      {!loading && filteredPayrolls.length > 0 && (
-        <div className="bg-slate-900/60 backdrop-blur-xl rounded-2xl border border-white/10 shadow-xl overflow-hidden">
-          <Pagination
-            currentPage={currentPage}
-            totalPages={totalPages}
-            totalItems={filteredPayrolls.length}
-            pageSize={pageSize}
-            onPageChange={(p) => setCurrentPage(p)}
-          />
-        </div>
-      )}
-
-      {/* Add / Edit Payroll Modal */}
+      {/* Add / Edit Modal */}
       <Modal
         isOpen={modalOpen}
         onClose={() => setModalOpen(false)}
-        title={editingPayroll ? 'Modify Payroll Record' : 'Generate Payroll Statement'}
+        title={editingPayroll ? 'Edit Payroll Record' : 'Generate Payroll Record'}
       >
         <form onSubmit={handleSubmit} className="space-y-4">
           <Select
-            label="Staff Member"
-            required
+            label="Employee"
             value={formData.employeeId}
             onChange={(e) => handleEmployeeSelect(e.target.value)}
-            options={employees.map((emp) => ({
-              value: String(emp.id),
-              label: `${emp.firstName} ${emp.lastName} (Salary: $${emp.salary || 0})`,
-            }))}
-            placeholder="Select staff member"
+            options={employeeOptions}
             error={formErrors.employeeId}
+            required
           />
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-3">
             <Select
-              label="Payroll Month"
-              required
+              label="Month"
               value={formData.month}
-              onChange={(e) => setFormData((prev) => ({ ...prev, month: e.target.value }))}
-              options={MONTHS}
-              error={formErrors.month}
+              onChange={(e) => setFormData({ ...formData, month: e.target.value })}
+              options={monthOptions}
+              required
             />
 
+            {/* Manually Editable Year Input */}
             <Input
-              label="Payroll Year"
+              label="Year (Custom Input)"
               type="number"
-              required
+              placeholder="e.g. 2026"
               value={formData.year}
-              onChange={(e) => setFormData((prev) => ({ ...prev, year: e.target.value }))}
+              onChange={(e) => setFormData({ ...formData, year: e.target.value })}
               error={formErrors.year}
+              required
             />
           </div>
 
           <div className="grid grid-cols-3 gap-3">
             <Input
-              label="Base Salary"
+              label="Basic Salary (₹)"
               type="number"
-              step="0.01"
-              required
               value={formData.basicSalary}
-              onChange={(e) => setFormData((prev) => ({ ...prev, basicSalary: e.target.value }))}
+              onChange={(e) => setFormData({ ...formData, basicSalary: e.target.value })}
               error={formErrors.basicSalary}
-            />
-
-            <Input
-              label="Bonus"
-              type="number"
-              step="0.01"
               required
-              value={formData.bonus}
-              onChange={(e) => setFormData((prev) => ({ ...prev, bonus: e.target.value }))}
-              error={formErrors.bonus}
             />
-
             <Input
-              label="Deduction"
+              label="Allowance / Bonus (₹)"
               type="number"
-              step="0.01"
-              required
-              value={formData.deduction}
-              onChange={(e) => setFormData((prev) => ({ ...prev, deduction: e.target.value }))}
-              error={formErrors.deduction}
+              value={formData.allowance}
+              onChange={(e) => setFormData({ ...formData, allowance: e.target.value })}
+              error={formErrors.allowance}
+            />
+            <Input
+              label="Deductions (₹)"
+              type="number"
+              value={formData.deductions}
+              onChange={(e) => setFormData({ ...formData, deductions: e.target.value })}
+              error={formErrors.deductions}
             />
           </div>
 
-          {/* Dynamic Net Salary Preview */}
-          <div className="p-4 bg-slate-950/80 rounded-2xl border border-white/10 flex items-center justify-between">
-            <div className="flex items-center gap-2 text-slate-300 text-xs font-semibold">
-              <Calculator className="w-4 h-4 text-indigo-400" />
-              <span>Calculated Net Disbursement:</span>
-            </div>
-            <span className="text-base font-black text-emerald-400 font-mono">
-              {formatCurrency(calculatedNetSalary)}
-            </span>
+          <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg flex items-center justify-between text-sm">
+            <span className="font-medium text-slate-600">Calculated Net Salary:</span>
+            <span className="font-bold text-slate-900 text-base">{formatCurrency(calculatedNet)}</span>
           </div>
 
-          <div className="pt-4 border-t border-white/10 flex items-center justify-end gap-3">
+          <Input
+            label="Payment Date"
+            type="date"
+            value={formData.paymentDate}
+            onChange={(e) => setFormData({ ...formData, paymentDate: e.target.value })}
+            error={formErrors.paymentDate}
+            required
+          />
+
+          <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
             <Button
+              type="button"
               variant="secondary"
               onClick={() => setModalOpen(false)}
-              disabled={submitting}
             >
               Cancel
             </Button>
-            <Button type="submit" variant="primary" isLoading={submitting}>
-              {editingPayroll ? 'Update Record' : 'Commit Payroll'}
+            <Button
+              type="submit"
+              variant="primary"
+              loading={submitting}
+            >
+              {editingPayroll ? 'Save Payroll' : 'Generate Payroll'}
             </Button>
           </div>
         </form>
@@ -588,12 +514,13 @@ export const Payroll = () => {
       {/* Delete Confirmation */}
       <ConfirmDialog
         isOpen={Boolean(payrollToDelete)}
-        onClose={() => setPayrollToDelete(null)}
-        onConfirm={handleDeleteConfirm}
-        title="Revoke Payroll Statement"
-        message={`Are you sure you want to permanently delete the payroll record for ${payrollToDelete?.employeeName} (${payrollToDelete?.month} ${payrollToDelete?.year})?`}
-        confirmText="Confirm Delete"
-        isLoading={deleting}
+        title="Delete Payroll Record"
+        message="Are you sure you want to delete this payroll record?"
+        confirmLabel="Delete"
+        isDestructive={true}
+        loading={deleting}
+        onConfirm={handleDelete}
+        onCancel={() => setPayrollToDelete(null)}
       />
     </div>
   );
