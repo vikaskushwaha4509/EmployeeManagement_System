@@ -1,0 +1,13 @@
+services:
+  - type: web
+    runtime: static
+    name: EmployeeManagement_System_frontend
+
+    buildCommand: npm install && npm run build
+
+    staticPublishPath: frontend/dist
+
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
