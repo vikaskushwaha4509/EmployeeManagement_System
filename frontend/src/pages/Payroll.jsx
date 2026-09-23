@@ -80,9 +80,9 @@ export const Payroll = () => {
       employeeId: initialEmp?.id ? String(initialEmp.id) : '',
       month: currentMonthName,
       year: currentYear,
-      basicSalary: initialEmp?.salary ? String(initialEmp.salary) : '50000',
-      allowance: '5000',
-      deductions: '2000',
+      basicSalary: initialEmp?.salary ? String(initialEmp.salary) : '',
+      allowance: '0',
+      deductions: '0',
       paymentDate: new Date().toISOString().split('T')[0],
     });
     setFormErrors({});

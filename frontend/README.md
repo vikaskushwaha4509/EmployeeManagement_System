@@ -136,8 +136,10 @@ All frontend services map directly to Spring Boot backend controllers:
 ## 🚦 How to Run the Application
 
 ### 1. Start Spring Boot Backend
-In the project root directory:
+In the `backend/` directory:
 ```bash
+cd backend
+
 # Windows
 .\mvnw.cmd spring-boot:run
 

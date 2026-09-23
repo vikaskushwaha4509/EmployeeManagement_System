@@ -1,6 +1,6 @@
 # Employee Management System (Full-Stack)
 
-A full-stack Human Resource & Employee Management enterprise application consisting of a **Spring Boot REST API** backend and a **React + Tailwind CSS** frontend.
+A modern full-stack Human Resource & Employee Management enterprise application consisting of a **Spring Boot REST API** backend and a **React + Vite + Tailwind CSS** frontend.
 
 ---
 
@@ -8,15 +8,29 @@ A full-stack Human Resource & Employee Management enterprise application consist
 
 ```
 EmployeeManagementSystem/
-├── src/                  # Spring Boot Backend source code
-├── pom.xml               # Maven configuration
-├── mvnw / mvnw.cmd       # Maven wrapper scripts
+├── backend/                  # Spring Boot REST API Backend
+│   ├── src/                  # Java source code (Controllers, Services, Repositories, Entities, DTOs)
+│   ├── pom.xml               # Maven dependencies and build configuration
+│   ├── mvnw / mvnw.cmd       # Maven wrapper scripts
+│   └── Dockerfile            # Backend Docker deployment container
 │
-└── frontend/             # React + Vite Frontend
-    ├── src/              # React components, pages, services, context
-    ├── package.json      # Frontend dependencies & scripts
-    ├── .env              # Environment configuration (VITE_API_BASE_URL)
-    └── README.md         # Dedicated frontend documentation
+├── frontend/                 # React + Vite Single Page Application (SPA)
+│   ├── src/                  # React components, pages, services, context, routes
+│   │   ├── components/       # Common UI elements and Layout (Navbar, Sidebar)
+│   │   ├── context/          # AuthContext and ToastContext
+│   │   ├── pages/            # Dashboard, Employees, Attendance, Departments, Leaves, Payroll
+│   │   ├── routes/           # Protected routes and application routing
+│   │   └── services/         # Axios API clients for backend integration
+│   ├── index.html            # Vite HTML entry point
+│   ├── package.json          # Frontend dependencies & scripts
+│   ├── tailwind.config.js    # Tailwind CSS configuration
+│   ├── vite.config.js        # Vite build & dev configuration
+│   ├── .env.example          # Sample environment variables
+│   └── README.md             # Frontend documentation
+│
+├── netlify.toml              # Netlify SPA deployment configuration
+├── render.yaml               # Render static site deployment configuration
+└── .gitignore                # Git ignore rules for Java, Node, IDEs & OS artifacts
 ```
 
 ---
@@ -24,13 +38,15 @@ EmployeeManagementSystem/
 ## 🚀 Getting Started
 
 ### 1. Database Setup
-Ensure MySQL is running with database credentials configured in `src/main/resources/application.properties`:
+Ensure MySQL is running with database credentials configured in `backend/src/main/resources/application.properties`:
 - Database URL: `jdbc:mysql://localhost:3306/New_Ems`
 - Database: `New_Ems`
 
 ### 2. Run the Spring Boot Backend
-Open a terminal in the root directory and run:
+Open a terminal in the `backend` directory and run:
 ```bash
+cd backend
+
 # Windows
 .\mvnw.cmd spring-boot:run
 
