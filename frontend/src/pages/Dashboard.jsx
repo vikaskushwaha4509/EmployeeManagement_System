@@ -5,7 +5,6 @@ import {
   Building2,
   CalendarCheck,
   FileText,
-  IndianRupee,
   RefreshCw,
 } from 'lucide-react';
 import {
@@ -23,7 +22,7 @@ import attendanceService from '../services/attendanceService';
 import leaveService from '../services/leaveService';
 import { MONTHS } from '../constants/enums';
 
-// Colors exactly matching the department chart in the mockup
+// Colors matching the department chart theme
 const DEPT_COLORS = {
   Engineering: '#2563eb', // Blue
   HR: '#10b981',          // Green
@@ -35,37 +34,12 @@ const DEPT_COLORS = {
 
 const COLOR_PALETTE = ['#2563eb', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#94a3b8', '#06b6d4', '#ec4899'];
 
-const DEFAULT_ATTENDANCE_OVERVIEW = {
-  present: 1,
-  absent: 5,
+const INITIAL_ATTENDANCE_OVERVIEW = {
+  present: 0,
+  absent: 0,
   halfDay: 0,
   onLeave: 0,
 };
-
-const DEFAULT_DEPT_DISTRIBUTION = [
-  { name: 'Engineering', value: 40, color: '#2563eb' },
-  { name: 'HR', value: 12, color: '#10b981' },
-  { name: 'Finance', value: 15, color: '#f59e0b' },
-  { name: 'Marketing', value: 18, color: '#ef4444' },
-  { name: 'Operations', value: 20, color: '#8b5cf6' },
-  { name: 'Others', value: 15, color: '#94a3b8' },
-];
-
-const DEFAULT_RECENT_EMPLOYEES = [
-  { id: 1, name: 'Rahul Sharma', department: 'Engineering', joiningDate: '01 Sep 2026' },
-  { id: 2, name: 'Priya Singh', department: 'HR', joiningDate: '28 Aug 2026' },
-  { id: 3, name: 'Amit Verma', department: 'Finance', joiningDate: '25 Aug 2026' },
-  { id: 4, name: 'Sneha Gupta', department: 'Marketing', joiningDate: '20 Aug 2026' },
-  { id: 5, name: 'Karan Patel', department: 'Engineering', joiningDate: '18 Aug 2026' },
-];
-
-const DEFAULT_RECENT_LEAVES = [
-  { id: 1, name: 'Rohit Kumar', department: 'Engineering', leaveType: 'Sick Leave', date: '20 Sep 2026', status: 'Pending' },
-  { id: 2, name: 'Neha Tiwari', department: 'HR', leaveType: 'Casual Leave', date: '22 Sep 2026', status: 'Approved' },
-  { id: 3, name: 'Anjali Mehta', department: 'Marketing', leaveType: 'Annual Leave', date: '25 Sep 2026', status: 'Pending' },
-  { id: 4, name: 'Sandeep Yadav', department: 'Finance', leaveType: 'Sick Leave', date: '28 Sep 2026', status: 'Approved' },
-  { id: 5, name: 'Vikram Singh', department: 'Operations', leaveType: 'Casual Leave', date: '30 Sep 2026', status: 'Pending' },
-];
 
 export const Dashboard = () => {
   const currentDate = new Date();
@@ -77,10 +51,12 @@ export const Dashboard = () => {
   const [isCustomFilterOpen, setIsCustomFilterOpen] = useState(false);
 
   const [summary, setSummary] = useState(null);
-  const [deptDistribution, setDeptDistribution] = useState(DEFAULT_DEPT_DISTRIBUTION);
-  const [attendanceOverview, setAttendanceOverview] = useState(DEFAULT_ATTENDANCE_OVERVIEW);
-  const [recentEmployees, setRecentEmployees] = useState(DEFAULT_RECENT_EMPLOYEES);
-  const [recentLeaves, setRecentLeaves] = useState(DEFAULT_RECENT_LEAVES);
+  const [employeesCount, setEmployeesCount] = useState(0);
+  const [departmentsCount, setDepartmentsCount] = useState(0);
+  const [deptDistribution, setDeptDistribution] = useState([]);
+  const [attendanceOverview, setAttendanceOverview] = useState(INITIAL_ATTENDANCE_OVERVIEW);
+  const [recentEmployees, setRecentEmployees] = useState([]);
+  const [recentLeaves, setRecentLeaves] = useState([]);
   const [loading, setLoading] = useState(false);
 
   // Format dynamic current date e.g. "Fri, 19 Sep 2026"
@@ -120,13 +96,18 @@ export const Dashboard = () => {
         leaveService.getAllLeaves(),
       ]);
 
-      let employees = empRes.status === 'fulfilled' && empRes.value ? empRes.value : [];
-      let departments = deptRes.status === 'fulfilled' && deptRes.value ? deptRes.value : [];
-      let attendances = attRes.status === 'fulfilled' && attRes.value ? attRes.value : [];
-      let leaves = leaveRes.status === 'fulfilled' && leaveRes.value ? leaveRes.value : [];
+      const employees = empRes.status === 'fulfilled' && Array.isArray(empRes.value) ? empRes.value : [];
+      const departments = deptRes.status === 'fulfilled' && Array.isArray(deptRes.value) ? deptRes.value : [];
+      const attendances = attRes.status === 'fulfilled' && Array.isArray(attRes.value) ? attRes.value : [];
+      const leaves = leaveRes.status === 'fulfilled' && Array.isArray(leaveRes.value) ? leaveRes.value : [];
+
+      setEmployeesCount(employees.length);
+      setDepartmentsCount(departments.length);
 
       if (summaryData) {
         setSummary(summaryData);
+      } else {
+        setSummary(null);
       }
 
       // 1. Department Distribution Chart
@@ -142,9 +123,9 @@ export const Dashboard = () => {
           };
         }).filter(item => item.value > 0);
 
-        if (distribution.length > 0) {
-          setDeptDistribution(distribution);
-        }
+        setDeptDistribution(distribution);
+      } else {
+        setDeptDistribution([]);
       }
 
       // 2. Attendance Overview (Today) Donut Chart
@@ -182,7 +163,7 @@ export const Dashboard = () => {
         presentCount = summaryData.presentToday;
       }
 
-      const totalEmp = summaryData?.totalEmployees ?? (employees.length > 0 ? employees.length : 6);
+      const totalEmp = summaryData?.totalEmployees ?? employees.length;
       const onLeaveCount = activeLeavesToday;
       const absentCount = Math.max(0, totalEmp - presentCount - halfDayCount - onLeaveCount);
 
@@ -198,12 +179,14 @@ export const Dashboard = () => {
         const sortedEmps = [...employees].sort((a, b) => (b.id || 0) - (a.id || 0)).slice(0, 5);
         setRecentEmployees(
           sortedEmps.map((emp, idx) => ({
-            id: idx + 1,
+            id: emp.id || idx + 1,
             name: `${emp.firstName || ''} ${emp.lastName || ''}`.trim() || `Employee #${emp.id}`,
             department: emp.departmentName || emp.department?.name || 'General',
             joiningDate: formatDateDisplay(emp.joiningDate),
           }))
         );
+      } else {
+        setRecentEmployees([]);
       }
 
       // 4. Recent Leaves Table
@@ -216,15 +199,17 @@ export const Dashboard = () => {
             else if (l.status === 'REJECTED') statusNormalized = 'Rejected';
 
             return {
-              id: idx + 1,
+              id: l.id || idx + 1,
               name: l.employeeName || (l.employee ? `${l.employee.firstName} ${l.employee.lastName}` : `Employee #${l.employeeId}`),
-              department: l.departmentName || l.employee?.department?.name || 'Operations',
-              leaveType: l.reason || 'Annual Leave',
+              department: l.departmentName || l.employee?.department?.name || 'N/A',
+              leaveType: l.reason || 'Leave',
               date: formatDateDisplay(l.startDate),
               status: statusNormalized,
             };
           })
         );
+      } else {
+        setRecentLeaves([]);
       }
     } catch (err) {
       console.error('Error loading dashboard:', err);
@@ -271,8 +256,9 @@ export const Dashboard = () => {
     );
   };
 
-  // Custom label inside Department Pie slices matching reference image
+  // Custom label inside Department Pie slices
   const renderCustomizedLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, value }) => {
+    if (!value || value <= 0) return null;
     const RADIAN = Math.PI / 180;
     const radius = innerRadius + (outerRadius - innerRadius) * 0.55;
     const x = cx + radius * Math.cos(-midAngle * RADIAN);
@@ -292,11 +278,18 @@ export const Dashboard = () => {
     );
   };
 
-  const totalEmployeesCount = summary?.totalEmployees ?? (recentEmployees.length > 0 ? recentEmployees.length : 6);
-  const totalDepartmentsCount = summary?.totalDepartments ?? 8;
+  const totalEmployeesCount = summary?.totalEmployees ?? employeesCount;
+  const totalDepartmentsCount = summary?.totalDepartments ?? departmentsCount;
   const presentTodayCount = summary?.presentToday ?? attendanceOverview.present;
   const onLeaveTodayCount = summary?.pendingLeaveRequests ?? attendanceOverview.onLeave;
   const payrollDisplay = formatPayrollDisplay(summary?.totalPayroll);
+
+  const attendanceChartData = [
+    { name: 'Present', value: attendanceOverview.present, color: '#10b981' },
+    { name: 'Absent', value: attendanceOverview.absent, color: '#ef4444' },
+    { name: 'Half Day', value: attendanceOverview.halfDay, color: '#f97316' },
+    { name: 'On Leave', value: attendanceOverview.onLeave, color: '#eab308' },
+  ].filter((d) => d.value > 0);
 
   return (
     <div className="space-y-6 pb-8">
@@ -475,18 +468,8 @@ export const Dashboard = () => {
                 <PieChart>
                   <Pie
                     data={
-                      [
-                        { name: 'Present', value: attendanceOverview.present, color: '#10b981' },
-                        { name: 'Absent', value: attendanceOverview.absent, color: '#ef4444' },
-                        { name: 'Half Day', value: attendanceOverview.halfDay, color: '#f97316' },
-                        { name: 'On Leave', value: attendanceOverview.onLeave, color: '#eab308' },
-                      ].filter((d) => d.value > 0).length > 0
-                        ? [
-                            { name: 'Present', value: attendanceOverview.present, color: '#10b981' },
-                            { name: 'Absent', value: attendanceOverview.absent, color: '#ef4444' },
-                            { name: 'Half Day', value: attendanceOverview.halfDay, color: '#f97316' },
-                            { name: 'On Leave', value: attendanceOverview.onLeave, color: '#eab308' },
-                          ].filter((d) => d.value > 0)
+                      attendanceChartData.length > 0
+                        ? attendanceChartData
                         : [{ name: 'No Data', value: 1, color: '#f1f5f9' }]
                     }
                     cx="50%"
@@ -499,40 +482,27 @@ export const Dashboard = () => {
                     stroke="#ffffff"
                     strokeWidth={2}
                     labelLine={false}
-                    label={
-                      attendanceOverview.present > 0 || attendanceOverview.absent > 0 || attendanceOverview.halfDay > 0 || attendanceOverview.onLeave > 0
-                        ? renderAttendanceDonutLabel
-                        : false
-                    }
+                    label={attendanceChartData.length > 0 ? renderAttendanceDonutLabel : false}
                   >
-                    {(
-                      [
-                        { name: 'Present', value: attendanceOverview.present, color: '#10b981' },
-                        { name: 'Absent', value: attendanceOverview.absent, color: '#ef4444' },
-                        { name: 'Half Day', value: attendanceOverview.halfDay, color: '#f97316' },
-                        { name: 'On Leave', value: attendanceOverview.onLeave, color: '#eab308' },
-                      ].filter((d) => d.value > 0).length > 0
-                        ? [
-                            { name: 'Present', value: attendanceOverview.present, color: '#10b981' },
-                            { name: 'Absent', value: attendanceOverview.absent, color: '#ef4444' },
-                            { name: 'Half Day', value: attendanceOverview.halfDay, color: '#f97316' },
-                            { name: 'On Leave', value: attendanceOverview.onLeave, color: '#eab308' },
-                          ].filter((d) => d.value > 0)
-                        : [{ name: 'No Data', value: 1, color: '#f1f5f9' }]
+                    {(attendanceChartData.length > 0
+                      ? attendanceChartData
+                      : [{ name: 'No Data', value: 1, color: '#f1f5f9' }]
                     ).map((entry, index) => (
                       <Cell key={`att-donut-cell-${index}`} fill={entry.color} />
                     ))}
                   </Pie>
-                  <Tooltip
-                    formatter={(val, name) => [`${val}`, name]}
-                    contentStyle={{
-                      backgroundColor: '#1e293b',
-                      color: '#fff',
-                      borderRadius: '10px',
-                      border: 'none',
-                      fontSize: '12px',
-                    }}
-                  />
+                  {attendanceChartData.length > 0 && (
+                    <Tooltip
+                      formatter={(val, name) => [`${val}`, name]}
+                      contentStyle={{
+                        backgroundColor: '#1e293b',
+                        color: '#fff',
+                        borderRadius: '10px',
+                        border: 'none',
+                        fontSize: '12px',
+                      }}
+                    />
+                  )}
                 </PieChart>
               </ResponsiveContainer>
 
@@ -596,50 +566,57 @@ export const Dashboard = () => {
           </div>
 
           <div className="h-64 sm:h-72 w-full flex items-center justify-center">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={deptDistribution}
-                  cx="45%"
-                  cy="50%"
-                  outerRadius={88}
-                  dataKey="value"
-                  labelLine={false}
-                  label={renderCustomizedLabel}
-                >
-                  {deptDistribution.map((entry, index) => (
-                    <Cell
-                      key={`dept-cell-${index}`}
-                      fill={entry.color || COLOR_PALETTE[index % COLOR_PALETTE.length]}
-                      stroke="#ffffff"
-                      strokeWidth={1.5}
-                    />
-                  ))}
-                </Pie>
-                <Tooltip
-                  formatter={(val, name) => [`${val} Employees`, name]}
-                  contentStyle={{
-                    backgroundColor: '#1e293b',
-                    color: '#fff',
-                    borderRadius: '10px',
-                    border: 'none',
-                    fontSize: '12px',
-                  }}
-                />
-                <Legend
-                  layout="vertical"
-                  verticalAlign="middle"
-                  align="right"
-                  iconType="circle"
-                  iconSize={8}
-                  formatter={(value) => (
-                    <span className="text-xs font-medium text-slate-700 ml-1">
-                      {value}
-                    </span>
-                  )}
-                />
-              </PieChart>
-            </ResponsiveContainer>
+            {deptDistribution.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={deptDistribution}
+                    cx="45%"
+                    cy="50%"
+                    outerRadius={88}
+                    dataKey="value"
+                    labelLine={false}
+                    label={renderCustomizedLabel}
+                  >
+                    {deptDistribution.map((entry, index) => (
+                      <Cell
+                        key={`dept-cell-${index}`}
+                        fill={entry.color || COLOR_PALETTE[index % COLOR_PALETTE.length]}
+                        stroke="#ffffff"
+                        strokeWidth={1.5}
+                      />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    formatter={(val, name) => [`${val} Employees`, name]}
+                    contentStyle={{
+                      backgroundColor: '#1e293b',
+                      color: '#fff',
+                      borderRadius: '10px',
+                      border: 'none',
+                      fontSize: '12px',
+                    }}
+                  />
+                  <Legend
+                    layout="vertical"
+                    verticalAlign="middle"
+                    align="right"
+                    iconType="circle"
+                    iconSize={8}
+                    formatter={(value) => (
+                      <span className="text-xs font-medium text-slate-700 ml-1">
+                        {value}
+                      </span>
+                    )}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex flex-col items-center justify-center text-center p-6 text-slate-400 text-xs">
+                <Building2 className="w-8 h-8 text-slate-300 mb-2" />
+                <span>No department distribution data available</span>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -671,14 +648,22 @@ export const Dashboard = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-xs">
-                {recentEmployees.map((emp, index) => (
-                  <tr key={emp.id || index} className="hover:bg-slate-50/50 transition-colors">
-                    <td className="py-3 pr-3 font-semibold text-slate-700">{emp.id || index + 1}</td>
-                    <td className="py-3 pr-3 font-medium text-slate-900">{emp.name}</td>
-                    <td className="py-3 pr-3 text-slate-600">{emp.department}</td>
-                    <td className="py-3 text-slate-600 whitespace-nowrap">{emp.joiningDate}</td>
+                {recentEmployees.length > 0 ? (
+                  recentEmployees.map((emp, index) => (
+                    <tr key={emp.id || index} className="hover:bg-slate-50/50 transition-colors">
+                      <td className="py-3 pr-3 font-semibold text-slate-700">{emp.id || index + 1}</td>
+                      <td className="py-3 pr-3 font-medium text-slate-900">{emp.name}</td>
+                      <td className="py-3 pr-3 text-slate-600">{emp.department}</td>
+                      <td className="py-3 text-slate-600 whitespace-nowrap">{emp.joiningDate}</td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={4} className="py-8 text-center text-slate-400 text-xs">
+                      No recent employees found.
+                    </td>
                   </tr>
-                ))}
+                )}
               </tbody>
             </table>
           </div>
@@ -711,38 +696,46 @@ export const Dashboard = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-xs">
-                {recentLeaves.map((leave, index) => {
-                  const isApproved = leave.status === 'Approved' || leave.status === 'APPROVED';
-                  const isRejected = leave.status === 'Rejected' || leave.status === 'REJECTED';
-                  const isPending = !isApproved && !isRejected;
+                {recentLeaves.length > 0 ? (
+                  recentLeaves.map((leave, index) => {
+                    const isApproved = leave.status === 'Approved' || leave.status === 'APPROVED';
+                    const isRejected = leave.status === 'Rejected' || leave.status === 'REJECTED';
+                    const isPending = !isApproved && !isRejected;
 
-                  return (
-                    <tr key={leave.id || index} className="hover:bg-slate-50/50 transition-colors">
-                      <td className="py-3 pr-2 font-semibold text-slate-700">{leave.id || index + 1}</td>
-                      <td className="py-3 pr-2 font-medium text-slate-900 whitespace-nowrap">{leave.name}</td>
-                      <td className="py-3 pr-2 text-slate-600">{leave.department}</td>
-                      <td className="py-3 pr-2 text-slate-600 whitespace-nowrap">{leave.leaveType}</td>
-                      <td className="py-3 pr-2 text-slate-600 whitespace-nowrap">{leave.date}</td>
-                      <td className="py-3">
-                        {isApproved && (
-                          <span className="inline-block px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-[#dcfce7] text-[#166534]">
-                            Approved
-                          </span>
-                        )}
-                        {isPending && (
-                          <span className="inline-block px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-[#fef3c7] text-[#92400e]">
-                            Pending
-                          </span>
-                        )}
-                        {isRejected && (
-                          <span className="inline-block px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-[#fee2e2] text-[#991b1b]">
-                            Rejected
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
+                    return (
+                      <tr key={leave.id || index} className="hover:bg-slate-50/50 transition-colors">
+                        <td className="py-3 pr-2 font-semibold text-slate-700">{leave.id || index + 1}</td>
+                        <td className="py-3 pr-2 font-medium text-slate-900 whitespace-nowrap">{leave.name}</td>
+                        <td className="py-3 pr-2 text-slate-600">{leave.department}</td>
+                        <td className="py-3 pr-2 text-slate-600 whitespace-nowrap">{leave.leaveType}</td>
+                        <td className="py-3 pr-2 text-slate-600 whitespace-nowrap">{leave.date}</td>
+                        <td className="py-3">
+                          {isApproved && (
+                            <span className="inline-block px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-[#dcfce7] text-[#166534]">
+                              Approved
+                            </span>
+                          )}
+                          {isPending && (
+                            <span className="inline-block px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-[#fef3c7] text-[#92400e]">
+                              Pending
+                            </span>
+                          )}
+                          {isRejected && (
+                            <span className="inline-block px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-[#fee2e2] text-[#991b1b]">
+                              Rejected
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
+                ) : (
+                  <tr>
+                    <td colSpan={6} className="py-8 text-center text-slate-400 text-xs">
+                      No recent leave requests found.
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>

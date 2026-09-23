@@ -22,7 +22,7 @@ import attendanceService from '../services/attendanceService';
 import leaveService from '../services/leaveService';
 import { MONTHS } from '../constants/enums';
 
-// Colors for department chart
+// Colors matching the department chart theme
 const DEPT_COLORS = {
   Engineering: '#2563eb', // Blue
   HR: '#10b981',          // Green
